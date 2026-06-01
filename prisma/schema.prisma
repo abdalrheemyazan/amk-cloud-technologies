@@ -1,0 +1,267 @@
+generator client {
+  provider = "prisma-client-js"
+  engineType = "library"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  CUSTOMER
+  SUPPORT_AGENT
+  CLOUD_ENGINEER
+  TEAM_LEADER
+  ADMINISTRATOR
+  TECHNICIAN
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+  CANCELLED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum UserStatus {
+  PENDING
+  ACTIVE
+  REJECTED
+}
+
+model User {
+  id              String      @id @default(cuid())
+  name            String?
+  email           String      @unique
+  password        String
+  role            Role        @default(CUSTOMER)
+  status          UserStatus  @default(ACTIVE)
+  companyName     String?
+  phone           String?
+  requestedService String?
+  shortMessage    String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  
+  // Custom user settings fields
+  preferredLanguage  String?   @default("he")
+  preferredTheme     String?   @default("light")
+  emailNotifications Boolean   @default(true)
+  monthlyReport      Boolean   @default(true)
+
+  tickets         Ticket[]    @relation("UserTickets")
+  assignedTickets Ticket[]    @relation("AgentTickets")
+  articles        KnowledgeArticle[]
+
+  // Live Technical Support relations
+  customerSessions   SupportSession[] @relation("SessionCustomer")
+  technicianSessions SupportSession[] @relation("SessionTechnician")
+  authoredNotes      TechnicianNote[] @relation("TechnicianAuthoredNotes")
+
+  // NextAuth standard relations
+  accounts Account[]
+  sessions Session[]
+
+  // Core & Audit Logging relations
+  ticketMessages TicketMessage[]
+  auditLogs      AuditLog[]
+  presence       TechnicianPresence?
+}
+
+model Ticket {
+  id          String         @id @default(cuid())
+  title       String
+  description String
+  status      TicketStatus   @default(OPEN)
+  priority    TicketPriority @default(MEDIUM)
+  category    String
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  userId      String
+  user        User           @relation("UserTickets", fields: [userId], references: [id])
+  agentId     String?
+  agent       User?          @relation("AgentTickets", fields: [agentId], references: [id])
+
+  // Soft cancellation fields
+  cancellationReason String?
+  cancelledAt        DateTime?
+
+  // Relations
+  messages TicketMessage[]
+}
+
+model KnowledgeArticle {
+  id                    String   @id @default(cuid())
+  slug                  String   @unique @default(cuid())
+  title                 String
+  content               String   @db.Text
+  category              String
+  tags                  String[]
+  authorId              String
+  author                User     @relation(fields: [authorId], references: [id])
+  audience              String   @default("CUSTOMER")
+  severity              String   @default("LOW")
+  symptoms              String?  @db.Text
+  diagnosisSteps        String?  @db.Text
+  resolutionSteps       String?  @db.Text
+  escalationCriteria    String?  @db.Text
+  customerReplyTemplate String?  @db.Text
+  internalNotes         String?  @db.Text
+  isPublished           Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model MonitoringAlert {
+  id        String   @id @default(cuid())
+  source    String
+  severity  String
+  message   String
+  timestamp DateTime @default(now())
+}
+
+model SupportSession {
+  id           String                     @id @default(cuid())
+  status       String                     @default("PENDING") // PENDING, ACTIVE, COMPLETED
+  customerId   String
+  customer     User                       @relation("SessionCustomer", fields: [customerId], references: [id])
+  technicianId String?
+  technician   User?                      @relation("SessionTechnician", fields: [technicianId], references: [id])
+  createdAt    DateTime                   @default(now())
+  updatedAt    DateTime                   @updatedAt
+  messages     SessionMessage[]
+  remotes      RemoteConnectionRequest[]
+  notes        TechnicianNote[]
+}
+
+model SessionMessage {
+  id          String         @id @default(cuid())
+  sessionId   String
+  session     SupportSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  senderId    String
+  senderRole  Role
+  message     String
+  type        String         @default("TEXT") // TEXT, SYSTEM, LOG, SCREENSHOT
+  createdAt   DateTime       @default(now())
+}
+
+model RemoteConnectionRequest {
+  id             String         @id @default(cuid())
+  sessionId      String
+  session        SupportSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  status         String         @default("PENDING") // PENDING, ACCEPTED, DECLINED, EXPIRED
+  connectionType String         @default("ANYDESK") // TEAMVIEWER, ANYDESK
+  connectionId   String?
+  password       String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+}
+
+model TechnicianNote {
+  id           String          @id @default(cuid())
+  sessionId    String?
+  session      SupportSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  technicianId String
+  technician   User            @relation("TechnicianAuthoredNotes", fields: [technicianId], references: [id])
+  content      String
+  isPrivate    Boolean         @default(true)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+}
+
+// NextAuth core models
+model Account {
+  id                 String  @id @default(cuid())
+  userId             String
+  type               String
+  provider           String
+  providerAccountId  String
+  refresh_token      String? @db.Text
+  access_token       String? @db.Text
+  expires_at         Int?
+  token_type         String?
+  scope              String?
+  id_token           String? @db.Text
+  session_state      String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// Ticket messaging model
+model TicketMessage {
+  id        String   @id @default(cuid())
+  ticketId  String
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  senderId  String
+  sender    User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  message   String
+  createdAt DateTime @default(now())
+}
+
+// Service catalog model
+model Service {
+  id          String   @id @default(cuid())
+  name        String
+  category    String
+  description String?
+  status      String   @default("ACTIVE") // ACTIVE, MAINTENANCE, OFFLINE
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// System logging model
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String
+  details   String?
+  ipAddress String?
+  createdAt DateTime @default(now())
+}
+
+enum PresenceStatus {
+  ONLINE
+  OFFLINE
+  BUSY
+  IN_TICKET
+  IN_REMOTE_SESSION
+  AVAILABLE
+}
+
+model TechnicianPresence {
+  id                      String         @id @default(cuid())
+  technicianId            String         @unique
+  technician              User           @relation(fields: [technicianId], references: [id], onDelete: Cascade)
+  status                  PresenceStatus @default(OFFLINE)
+  currentTicketId         String?
+  currentSupportSessionId String?
+  lastSeenAt              DateTime       @default(now())
+  updatedAt               DateTime       @updatedAt
+}
