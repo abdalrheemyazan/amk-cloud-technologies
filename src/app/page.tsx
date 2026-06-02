@@ -980,27 +980,27 @@ export default function LandingPage() {
               name: "דניאל כהן",
               role: "מנהל מערכות מידע · NovaTech",
               body: "מאז שעברנו ל-AMK השירות הפך יציב, מהיר ומקצועי יותר. הצוות תמיד זמין ונותן מענה ברור.",
-              image: "https://images.unsplash.com/photo-1560250097-0b93528c311a?w=150&h=150&fit=crop&crop=faces&q=80"
+              initial: "ד"
             },
             {
               name: "רועי לוי",
               role: "בעל עסק · CloudNet",
               body: "פתרונות ה-VPS והגיבוי של AMK נתנו לנו שקט נפשי אמיתי וניהול הרבה יותר פשוט.",
-              image: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop&crop=faces&q=80"
+              initial: "ר"
             },
             {
               name: "מאיה ישראלי",
               role: "מנהלת תפעול · Orion Labs",
               body: "התמיכה הטכנית מהירה מאוד, והמערכת החכמה עוזרת לנו לפתור תקלות בלי לבזבז זמן.",
-              image: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&h=150&fit=crop&crop=faces&q=80"
+              initial: "מ"
             }
           ].map((review, i) => (
             <div 
               key={i} 
               className="group relative w-full max-w-[325px] mx-auto bg-white border border-slate-200/50 rounded-[2rem] shadow-[0_8px_30px_rgba(0,0,0,0.01)] hover:shadow-2xl hover:shadow-blue-600/5 hover:-translate-y-1 transition-all duration-500 px-6 pb-8 pt-16 flex flex-col items-center text-center"
             >
-              <div className="absolute -top-12 left-1/2 -translate-x-1/2 w-[90px] h-[90px] rounded-full border-[5px] border-slate-50/50 shadow-md overflow-hidden bg-slate-100 group-hover:scale-105 transition-transform duration-500">
-                <Image src={review.image} alt={review.name} fill className="object-cover"  />
+              <div className="absolute -top-12 left-1/2 -translate-x-1/2 w-[90px] h-[90px] rounded-full border-[5px] border-slate-50/50 shadow-md overflow-hidden bg-blue-100 text-blue-600 flex items-center justify-center group-hover:scale-105 transition-transform duration-500 text-3xl font-black">
+                {review.initial}
               </div>
               <h3 className="text-lg font-black text-slate-900 mb-1">{review.name}</h3>
               <p className="text-xs font-bold text-slate-400 mb-4">{review.role}</p>

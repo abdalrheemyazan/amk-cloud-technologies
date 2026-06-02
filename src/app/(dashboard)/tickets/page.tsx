@@ -55,32 +55,47 @@ export default async function TicketsPage() {
   }
 
   // Fetch all tickets for internal staff
-  const dbTickets = await prisma.ticket.findMany({
-    orderBy: { createdAt: 'desc' },
-    take: 20,
-    select: {
-      id: true,
-      title: true,
-      category: true,
-      status: true,
-      priority: true,
-      createdAt: true,
-      user: {
-        select: {
-          name: true,
-          companyName: true,
+  let dbTickets: any[] = [];
+  try {
+    dbTickets = await prisma.ticket.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+      select: {
+        id: true,
+        title: true,
+        category: true,
+        status: true,
+        priority: true,
+        createdAt: true,
+        updatedAt: true,
+        user: {
+          select: {
+            name: true,
+            email: true,
+            companyName: true,
+          }
+        },
+        agent: {
+          select: {
+            name: true,
+          }
+        },
+        _count: {
+          select: { messages: true }
         }
-      },
-      agent: {
-        select: {
-          name: true,
-        }
-      },
-      _count: {
-        select: { messages: true }
       }
-    }
-  });
+    });
+  } catch (error) {
+    console.error("Internal tickets page failed:", error);
+    return (
+      <div className="p-8 text-center" dir="rtl">
+        <div className="bg-red-50 text-red-600 p-6 rounded-2xl inline-block border border-red-100">
+          <h2 className="text-xl font-bold mb-2">שגיאת שרת</h2>
+          <p>אירעה שגיאה בטעינת הקריאות. נסה לרענן את העמוד.</p>
+        </div>
+      </div>
+    );
+  }
 
   const tickets = dbTickets.map(ticket => ({
     id: ticket.id,

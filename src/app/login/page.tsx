@@ -69,8 +69,12 @@ export default function LoginPage() {
           setError("החשבון ממתין לאישור מנהל.");
         } else if (res.error.includes("REJECTED_USER")) {
           setError("בקשת ההצטרפות שלך נדחתה. פנה לתמיכה לקבלת פרטים.");
-        } else {
+        } else if (res.error.includes("DATABASE_ERROR")) {
+          setError("אירעה שגיאה זמנית בהתחברות. נסו שוב בעוד רגע.");
+        } else if (res.error.includes("INVALID_CREDENTIALS")) {
           setError("פרטי ההתחברות שגויים. אנא נסו שוב.");
+        } else {
+          setError("אירעה שגיאה זמנית בהתחברות. נסו שוב בעוד רגע.");
         }
       } else {
         router.push("/dashboard");

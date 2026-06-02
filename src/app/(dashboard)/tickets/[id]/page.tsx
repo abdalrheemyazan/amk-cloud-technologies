@@ -35,25 +35,40 @@ export default async function InternalTicketDetailsPage({ params }: { params: Pr
   }
 
   const ticketId = (await params).id;
-  const ticket = await prisma.ticket.findUnique({
-    where: { id: ticketId },
-    include: {
-      user: {
-        select: { id: true, name: true, companyName: true, email: true, phone: true }
-      },
-      agent: {
-        select: { id: true, name: true }
-      },
-      messages: {
-        orderBy: { createdAt: 'asc' },
-        include: {
-          sender: {
-            select: { id: true, name: true, role: true }
+  let ticket: any = null;
+
+  try {
+    ticket = await prisma.ticket.findUnique({
+      where: { id: ticketId },
+      include: {
+        user: {
+          select: { id: true, name: true, companyName: true, email: true, phone: true }
+        },
+        agent: {
+          select: { id: true, name: true }
+        },
+        messages: {
+          orderBy: { createdAt: 'asc' },
+          include: {
+            sender: {
+              select: { id: true, name: true, role: true }
+            }
           }
         }
       }
-    }
-  });
+    });
+  } catch (error) {
+    console.error("Internal ticket details failed:", error);
+    return (
+      <div className="p-8 text-center" dir="rtl">
+        <div className="bg-red-50 text-red-600 p-6 rounded-2xl inline-block border border-red-100">
+          <h2 className="text-xl font-bold mb-2">שגיאת שרת</h2>
+          <p>אירעה שגיאה בטעינת פרטי הקריאה. נסה לרענן את העמוד.</p>
+          <Link href="/tickets" className="text-blue-600 hover:underline mt-4 inline-block font-bold">חזור לרשימת הקריאות</Link>
+        </div>
+      </div>
+    );
+  }
 
   if (!ticket) {
     notFound();

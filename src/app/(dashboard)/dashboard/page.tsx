@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import {
   Activity,
   Ticket,
@@ -100,6 +101,7 @@ interface DashboardData {
 
 export default function Dashboard() {
   const { data: session } = useSession();
+  const router = useRouter();
   const [data, setData] = useState<DashboardData>({
     success: true,
     stats: { openTickets: 0, totalTickets: 0, responseTime: "0.0", activeServers: 0, systemAlerts: 0, activeTechnicians: 0, pendingRegistrations: 0, knowledgeArticles: 0, openSupportSessions: 0, aiRequests: 0, aiSuggestions: 0 },
@@ -576,11 +578,12 @@ export default function Dashboard() {
                     {ticketsList.map((ticket, i) => (
                       <motion.div
                         key={ticket.id || i}
+                        onClick={() => router.push(`/tickets/${ticket.id}`)}
                         initial={{ opacity: 0, x: 10 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: i * 0.03 }}
                         whileHover={{ y: -1 }}
-                        className="p-4 rounded-xl bg-slate-50 hover:bg-slate-50/80 border border-slate-150 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 group transition-all duration-200 text-right"
+                        className="p-4 rounded-xl bg-slate-50 hover:bg-slate-50/80 border border-slate-150 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 group transition-all duration-200 text-right cursor-pointer hover:shadow-sm"
                       >
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-indigo-650 font-bold text-xs shadow-sm shrink-0">

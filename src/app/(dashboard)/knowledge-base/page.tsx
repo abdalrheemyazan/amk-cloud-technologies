@@ -17,6 +17,7 @@ import {
   ChevronRight
 } from "lucide-react";
 import { useState } from "react";
+import Link from "next/link";
 
 const categories = [
   "הכל",
@@ -36,7 +37,8 @@ const articles = [
     author: "אבי כהן",
     date: "12 מאי 2026",
     reads: "1.2k",
-    verified: true
+    verified: true,
+    slug: "setup-vps"
   },
   {
     id: 2,
@@ -46,7 +48,8 @@ const articles = [
     author: "דנה לוי",
     date: "10 מאי 2026",
     reads: "850",
-    verified: true
+    verified: true,
+    slug: "database-auto-backup"
   },
   {
     id: 3,
@@ -56,7 +59,8 @@ const articles = [
     author: "משה לוי",
     date: "08 מאי 2026",
     reads: "2.4k",
-    verified: false
+    verified: false,
+    slug: "ssl-best-practices"
   }
 ];
 
@@ -125,11 +129,12 @@ export default function KnowledgeBase() {
         <div className="lg:col-span-2 space-y-4">
           {filteredArticles.length > 0 ? (
             filteredArticles.map((article, i) => (
-              <div 
+              <Link 
+                href={`/knowledge-base/${article.slug}`}
                 key={article.id}
-                className="bg-white border border-slate-200/85 hover:border-blue-200 hover:shadow-[0_4px_12px_rgba(59,130,246,0.02)] rounded-2xl p-6 transition-all duration-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 group"
+                className="bg-white border border-slate-200/85 hover:border-blue-200 hover:shadow-[0_4px_12px_rgba(59,130,246,0.02)] rounded-2xl p-6 transition-all duration-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 group cursor-pointer block"
               >
-                <div className="space-y-3.5 flex-1">
+                <div className="space-y-3.5 flex-1 w-full">
                   <div className="flex items-center gap-3">
                     <span className="px-2 py-0.5 rounded bg-slate-150 border border-slate-200 text-slate-600 text-[9px] font-black tracking-wide uppercase">
                       {article.category}
@@ -151,30 +156,35 @@ export default function KnowledgeBase() {
                     </p>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-4 text-[10px] text-slate-400 font-semibold pt-1">
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center font-bold text-[9px] text-slate-500">
-                        {article.author[0]}
+                  <div className="flex flex-wrap items-center justify-between gap-4 pt-1 w-full">
+                    <div className="flex flex-wrap items-center gap-4 text-[10px] text-slate-400 font-semibold">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center font-bold text-[9px] text-slate-500">
+                          {article.author[0]}
+                        </div>
+                        <span className="text-slate-600">{article.author}</span>
                       </div>
-                      <span className="text-slate-600">{article.author}</span>
-                    </div>
-                    <span className="text-slate-200 font-light">•</span>
-                    <div className="flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5" />
-                      <span>{article.date}</span>
-                    </div>
-                    <span className="text-slate-200 font-light">•</span>
-                    <div className="flex items-center gap-1">
-                      <TrendingUp className="w-3.5 h-3.5" />
-                      <span>{article.reads} קוראים</span>
+                      <span className="text-slate-200 font-light">•</span>
+                      <div className="flex items-center gap-1">
+                        <Clock className="w-3.5 h-3.5" />
+                        <span>{article.date}</span>
+                      </div>
+                      <span className="text-slate-200 font-light">•</span>
+                      <div className="flex items-center gap-1">
+                        <TrendingUp className="w-3.5 h-3.5" />
+                        <span>{article.reads} קוראים</span>
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                <button className="w-10 h-10 rounded-xl bg-slate-50 text-slate-400 group-hover:bg-blue-600 group-hover:text-white transition-all shadow-sm flex items-center justify-center shrink-0 border border-slate-200/80 group-hover:border-blue-600">
-                  <ChevronLeft className="w-5 h-5" />
-                </button>
-              </div>
+                <div className="flex items-center justify-end w-full md:w-auto">
+                  <span className="px-5 py-2.5 rounded-xl bg-slate-50 text-slate-600 font-black text-xs group-hover:bg-blue-600 group-hover:text-white transition-all shadow-sm flex items-center justify-center gap-2 border border-slate-200/80 group-hover:border-blue-600">
+                    קרא עוד
+                    <ChevronLeft className="w-4 h-4" />
+                  </span>
+                </div>
+              </Link>
             ))
           ) : (
             <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center flex flex-col items-center justify-center space-y-3">

@@ -12,17 +12,37 @@ export const authOptions: NextAuthOptions = {
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) return null;
+        if (!credentials?.email || !credentials?.password) {
+          throw new Error("INVALID_CREDENTIALS");
+        }
         
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email },
-        });
+        const email = credentials.email.trim().toLowerCase();
+        let user;
 
-        if (!user) return null;
+        try {
+          user = await prisma.user.findUnique({
+            where: { email },
+          });
+        } catch (error) {
+          console.error("Login authorize failed:", error);
+          throw new Error("DATABASE_ERROR");
+        }
 
-        const isPasswordValid = await bcrypt.compare(credentials.password, user.password);
+        if (!user) {
+          throw new Error("INVALID_CREDENTIALS");
+        }
 
-        if (!isPasswordValid) return null;
+        let isPasswordValid = false;
+        try {
+          isPasswordValid = await bcrypt.compare(credentials.password, user.password);
+        } catch (error) {
+          console.error("Login authorize failed:", error);
+          throw new Error("DATABASE_ERROR");
+        }
+
+        if (!isPasswordValid) {
+          throw new Error("INVALID_CREDENTIALS");
+        }
 
         if (user.status === "PENDING") {
           throw new Error("PENDING_APPROVAL");
