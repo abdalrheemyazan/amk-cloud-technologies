@@ -35,7 +35,14 @@ export default async function CustomerPortalPage() {
   const userTickets = await prisma.ticket.findMany({
     where: { userId },
     orderBy: { createdAt: "desc" },
-    take: 4
+    take: 3,
+    select: {
+      id: true,
+      title: true,
+      status: true,
+      category: true,
+      createdAt: true
+    }
   });
 
   // 2. Fetch ticket stats

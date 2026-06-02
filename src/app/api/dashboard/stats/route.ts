@@ -56,12 +56,12 @@ export async function GET(req: NextRequest) {
     ] = await Promise.all([
       prisma.ticket.findMany({
         orderBy: { createdAt: "desc" },
-        take: 10,
+        take: 5,
         include: { user: { select: { name: true, email: true } }, agent: { select: { name: true } } }
       }).catch(() => []),
       prisma.ticket.count({ where: { status: { in: ["OPEN", "IN_PROGRESS"] } } }).catch(() => 0),
       prisma.ticket.count().catch(() => 0),
-      prisma.monitoringAlert.findMany({ orderBy: { timestamp: "desc" }, take: 10 }).catch(() => []),
+      prisma.monitoringAlert.findMany({ orderBy: { timestamp: "desc" }, take: 5 }).catch(() => []),
       prisma.monitoringAlert.count().catch(() => 0),
       prisma.user.findMany({
         where: { role: "TECHNICIAN" },
@@ -71,7 +71,7 @@ export async function GET(req: NextRequest) {
       prisma.service.count({ where: { status: "ACTIVE" } }).catch(() => 0),
       prisma.auditLog.findMany({
         orderBy: { createdAt: "desc" },
-        take: 10,
+        take: 5,
         include: { user: { select: { name: true, email: true } } }
       }).catch(() => [])
     ]);
@@ -128,10 +128,14 @@ export async function GET(req: NextRequest) {
     // 7. Calculate real average response time (in minutes) based on actual first replies
     let avgResponseTime = 0.0;
     try {
+      // Optimizied: fetching only recent tickets to avoid full table scan
       const ticketsWithMessages = await prisma.ticket.findMany({
+        take: 20,
+        orderBy: { createdAt: "desc" },
         include: {
           messages: {
             orderBy: { createdAt: "asc" },
+            take: 1, // We only need the first message to check if it's from a non-customer
             include: {
               sender: {
                 select: { role: true }

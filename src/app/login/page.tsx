@@ -234,7 +234,6 @@ export default function LoginPage() {
                     alt="AMK Cloud Technologies"
                     width={170}
                     height={55}
-                    unoptimized
                     priority
                     className="h-auto object-contain relative z-10"
                   />
@@ -468,7 +467,6 @@ export default function LoginPage() {
                     alt="AMK Cloud Technologies"
                     width={170}
                     height={55}
-                    unoptimized
                     priority
                     className="h-auto object-contain relative z-10"
                   />
@@ -584,7 +582,6 @@ export default function LoginPage() {
                     alt="AMK Cloud Technologies"
                     width={150}
                     height={48}
-                    unoptimized
                     priority
                     className="h-auto object-contain relative z-10"
                   />

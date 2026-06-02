@@ -13,6 +13,14 @@ export default async function CustomerTicketsPage() {
   const tickets = await prisma.ticket.findMany({
     where: { user: { email: session.user.email } },
     orderBy: { createdAt: "desc" },
+    take: 10,
+    select: {
+      id: true,
+      title: true,
+      category: true,
+      createdAt: true,
+      status: true
+    }
   });
 
   return (

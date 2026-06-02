@@ -393,7 +393,7 @@ export default function LandingPage() {
               alt="AMK Cloud Technologies"
               width={195}
               height={65}
-              unoptimized
+              
               priority
               className="h-auto object-contain transition-all duration-300 opacity-95 hover:opacity-100 hover:drop-shadow-[0_0_15px_rgba(37,99,235,0.22)]"
             />
@@ -450,7 +450,7 @@ export default function LandingPage() {
                     alt="AMK"
                     width={130}
                     height={40}
-                    unoptimized
+                    
                     className="object-contain"
                   />
                   <button 
@@ -551,7 +551,7 @@ export default function LandingPage() {
                   fill
                   priority
                   quality={100}
-                  unoptimized
+                  
                   className="object-contain drop-shadow-[0_12px_40px_rgba(37,99,235,0.06)] relative z-10"
                 />
               </motion.div>
@@ -776,7 +776,7 @@ export default function LandingPage() {
                   fill
                   className="object-contain object-bottom group-hover:scale-[1.03] transition-transform duration-500"
                   sizes="(max-width: 768px) 240px, 320px"
-                  unoptimized={true}
+                  
                 />
 
                 {/* Typing Dots Bubble */}
@@ -845,7 +845,7 @@ export default function LandingPage() {
                   fill
                   className="object-contain object-bottom group-hover:scale-[1.02] transition-transform duration-500 relative z-10"
                   sizes="(max-width: 768px) 300px, 380px"
-                  unoptimized={true}
+                  
                 />
 
                 {/* Light Sweep Effect */}
@@ -1000,7 +1000,7 @@ export default function LandingPage() {
               className="group relative w-full max-w-[325px] mx-auto bg-white border border-slate-200/50 rounded-[2rem] shadow-[0_8px_30px_rgba(0,0,0,0.01)] hover:shadow-2xl hover:shadow-blue-600/5 hover:-translate-y-1 transition-all duration-500 px-6 pb-8 pt-16 flex flex-col items-center text-center"
             >
               <div className="absolute -top-12 left-1/2 -translate-x-1/2 w-[90px] h-[90px] rounded-full border-[5px] border-slate-50/50 shadow-md overflow-hidden bg-slate-100 group-hover:scale-105 transition-transform duration-500">
-                <Image src={review.image} alt={review.name} fill className="object-cover" unoptimized={true} />
+                <Image src={review.image} alt={review.name} fill className="object-cover"  />
               </div>
               <h3 className="text-lg font-black text-slate-900 mb-1">{review.name}</h3>
               <p className="text-xs font-bold text-slate-400 mb-4">{review.role}</p>

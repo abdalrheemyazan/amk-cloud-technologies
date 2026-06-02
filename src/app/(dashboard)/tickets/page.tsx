@@ -57,10 +57,28 @@ export default async function TicketsPage() {
   // Fetch all tickets for internal staff
   const dbTickets = await prisma.ticket.findMany({
     orderBy: { createdAt: 'desc' },
-    include: {
-      user: true,
-      agent: true,
-      messages: true
+    take: 20,
+    select: {
+      id: true,
+      title: true,
+      category: true,
+      status: true,
+      priority: true,
+      createdAt: true,
+      user: {
+        select: {
+          name: true,
+          companyName: true,
+        }
+      },
+      agent: {
+        select: {
+          name: true,
+        }
+      },
+      _count: {
+        select: { messages: true }
+      }
     }
   });
 
@@ -73,7 +91,7 @@ export default async function TicketsPage() {
     date: new Date(ticket.createdAt).toLocaleDateString("he-IL"),
     customer: ticket.user?.companyName || ticket.user?.name || "לקוח לא ידוע",
     assignedTo: ticket.agent?.name || "טרם שויך",
-    messages: ticket.messages.length
+    messages: ticket._count.messages
   }));
 
   return (
