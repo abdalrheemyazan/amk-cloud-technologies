@@ -73,38 +73,58 @@ export default async function TicketDetailsPage({ params }: PageProps) {
     redirect("/login");
   }
 
-  const { id } = await params;
+  const { id: ticketId } = await params;
+  const loggedUserId = (session.user as any).id;
+  const loggedUserRole = (session.user as any).role;
 
-  // Retrieve the ticket along with the user (owner) and messages
-  const ticket = await prisma.ticket.findUnique({
-    where: { id },
-    include: {
-      user: true,
-      messages: {
-        include: {
-          sender: {
-            select: {
-              id: true,
-              name: true,
-              role: true,
+  let ticket = null;
+
+  try {
+    ticket = await prisma.ticket.findFirst({
+      where: {
+        id: ticketId,
+        ...(loggedUserRole === "CUSTOMER" ? { userId: loggedUserId } : {})
+      },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        category: true,
+        priority: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+        cancellationReason: true,
+        cancelledAt: true,
+        userId: true,
+        messages: {
+          orderBy: { createdAt: "asc" },
+          select: {
+            id: true,
+            message: true,
+            createdAt: true,
+            senderId: true,
+            sender: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                role: true,
+              },
             },
           },
         },
-        orderBy: {
-          createdAt: "asc",
-        },
       },
-    },
-  });
+    });
+  } catch (error) {
+    console.error("Portal ticket details failed:", error);
+  }
 
   if (!ticket) {
     notFound();
   }
 
   // Security Check: Ensure that CUSTOMER can only view their own ticket
-  const loggedUserId = (session.user as any).id;
-  const loggedUserRole = (session.user as any).role;
-
   if (loggedUserRole === "CUSTOMER" && ticket.userId !== loggedUserId) {
     return (
       <div className="p-8 max-w-4xl mx-auto text-center space-y-4" dir="rtl">
