@@ -88,6 +88,19 @@ export const authOptions: NextAuthOptions = {
         token.role = (user as any).role;
         token.id = user.id;
         token.status = (user as any).status;
+      } else if (token.id && !token.role) {
+        try {
+          const dbUser = await prisma.user.findUnique({
+            where: { id: token.id as string },
+            select: { role: true, status: true }
+          });
+          if (dbUser) {
+            token.role = dbUser.role;
+            token.status = dbUser.status;
+          }
+        } catch (err) {
+          console.error("JWT db lookup error", err);
+        }
       }
       if (trigger === "update" && session?.name) {
         token.name = session.name;
@@ -96,7 +109,7 @@ export const authOptions: NextAuthOptions = {
     },
     async session({ session, token }) {
       if (session.user) {
-        (session.user as any).role = token.role;
+        (session.user as any).role = token.role || "CUSTOMER";
         (session.user as any).id = token.id;
         (session.user as any).status = token.status;
         if (token.name) {

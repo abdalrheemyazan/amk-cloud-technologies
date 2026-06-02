@@ -28,45 +28,68 @@ function getCleanTitle(title: string) {
 export default async function CustomerPortalPage() {
   const session = await getServerSession(authOptions);
   
-  if (!session?.user?.email) return null;
+  if (!session?.user?.email || !(session.user as any).id) {
+    return (
+      <div className="p-12 text-center" dir="rtl">
+        <h2 className="text-xl font-bold text-red-600">שגיאת התחברות</h2>
+        <p className="text-slate-500 mt-2">אנא התחבר מחדש למערכת.</p>
+      </div>
+    );
+  }
+
   const userId = (session.user as any).id;
+  const userName = session.user.name || "לקוח";
 
-  // 1. Fetch only this user's tickets
-  const userTickets = await prisma.ticket.findMany({
-    where: { userId },
-    orderBy: { createdAt: "desc" },
-    take: 3,
-    select: {
-      id: true,
-      title: true,
-      status: true,
-      category: true,
-      createdAt: true
-    }
-  });
+  let userTickets: any[] = [];
+  let openCount = 0;
+  let inProgressCount = 0;
+  let closedCount = 0;
+  let kbArticles: any[] = [];
 
-  // 2. Fetch ticket stats
-  const openCount = await prisma.ticket.count({
-    where: { userId, status: "OPEN" }
-  });
-  
-  const inProgressCount = await prisma.ticket.count({
-    where: { userId, status: "IN_PROGRESS" }
-  });
-  
-  const closedCount = await prisma.ticket.count({
-    where: { userId, status: { in: ["CLOSED", "RESOLVED", "CANCELLED"] } }
-  });
+  try {
+    // 1. Fetch only this user's tickets (exclude CANCELLED)
+    userTickets = await prisma.ticket.findMany({
+      where: { 
+        userId: userId,
+        status: { not: "CANCELLED" }
+      },
+      orderBy: { createdAt: "desc" },
+      take: 3,
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        category: true,
+        createdAt: true
+      }
+    });
 
-  // 3. Fetch Knowledge Base articles (Customer safe only)
-  const kbArticles = await prisma.knowledgeArticle.findMany({
-    where: {
-      isPublished: true,
-      audience: "CUSTOMER"
-    },
-    orderBy: { createdAt: "desc" },
-    take: 3
-  });
+    // 2. Fetch ticket stats
+    openCount = await prisma.ticket.count({
+      where: { userId, status: "OPEN" }
+    });
+    
+    inProgressCount = await prisma.ticket.count({
+      where: { userId, status: "IN_PROGRESS" }
+    });
+    
+    closedCount = await prisma.ticket.count({
+      where: { userId, status: { in: ["CLOSED", "RESOLVED", "CANCELLED"] } }
+    });
+
+    // 3. Fetch Knowledge Base articles (Customer safe only)
+    kbArticles = await prisma.knowledgeArticle.findMany({
+      where: {
+        isPublished: true,
+        audience: "CUSTOMER"
+      },
+      orderBy: { createdAt: "desc" },
+      take: 3
+    });
+  } catch (error) {
+    console.error("Customer portal render failed:", error);
+    // Don't crash the page, just use empty states
+  }
 
   return (
     <div className="bg-[#F4F7FB] min-h-screen font-sans pb-20 text-[#0F172A]" dir="rtl">
@@ -79,7 +102,7 @@ export default async function CustomerPortalPage() {
           
           <div className="relative z-10">
             <h1 className="text-3xl md:text-4xl font-extrabold mb-3 text-[#0F172A]">
-              שלום, {session.user.name} 👋
+              שלום, {userName} 👋
             </h1>
             <p className="text-[#64748B] text-lg max-w-xl">
               כאן ניתן לפתוח קריאות שירות, לעקוב אחר טיפול ולמצוא פתרונות במאגר הידע.
