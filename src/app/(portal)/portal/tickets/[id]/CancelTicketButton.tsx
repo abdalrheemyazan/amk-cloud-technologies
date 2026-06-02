@@ -46,13 +46,15 @@ export default function CancelTicketButton({ ticketId, currentStatus }: CancelTi
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || "אירעה שגיאה בביטول הקריאה");
+        throw new Error(data.error || "לא ניתן לבטל את הקריאה כרגע. נסה שוב מאוחר יותר.");
       }
 
       setIsOpen(false);
+      // Optional: Add a brief success state if needed, though router.refresh() will re-render
+      alert("הקריאה בוטלה בהצלחה");
       router.refresh();
     } catch (err: any) {
-      setError(err.message || "אירעה שגיאה בביטول הקריאה");
+      setError(err.message || "לא ניתן לבטל את הקריאה כרגע. נסה שוב מאוחר יותר.");
     } finally {
       setLoading(false);
     }

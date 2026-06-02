@@ -19,7 +19,7 @@ export default function CustomerProfilePage() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [companyName, setCompanyName] = useState("");
-  
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -77,7 +77,7 @@ export default function CustomerProfilePage() {
         setProfile(data.profile);
         await update({ name: data.profile.name });
       }
-      
+
       router.refresh();
       setTimeout(() => setSuccess(false), 3000);
     } catch (err: any) {
@@ -100,7 +100,7 @@ export default function CustomerProfilePage() {
     <div className="p-8 max-w-4xl mx-auto space-y-8" dir="rtl">
       <header className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
         <h1 className="text-3xl font-black text-slate-900 mb-2">הפרופיל שלי</h1>
-        <p className="text-slate-500 text-sm">ניהول פרטי הפרופיל האישיים שלך במערכת.</p>
+        <p className="text-slate-500 text-sm">כאן ניתן לעדכן פרטי חשבון, העדפות אישיות ופרטי התקשרות</p>
       </header>
 
       <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100">

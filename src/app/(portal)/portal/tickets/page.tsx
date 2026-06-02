@@ -3,15 +3,17 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 import { Ticket, PlusCircle } from "lucide-react";
-
-import { getTicketStatusLabel, getTicketStatusBadgeClass } from "@/lib/ticket-utils";
+import TicketCardClient from "./TicketCardClient";
 
 export default async function CustomerTicketsPage() {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) return null;
 
   const tickets = await prisma.ticket.findMany({
-    where: { user: { email: session.user.email } },
+    where: { 
+      user: { email: session.user.email },
+      status: { not: "CANCELLED" }
+    },
     orderBy: { createdAt: "desc" },
     take: 10,
     select: {
@@ -56,26 +58,7 @@ export default async function CustomerTicketsPage() {
         ) : (
           <ul className="divide-y divide-slate-100">
             {tickets.map(ticket => (
-              <li key={ticket.id} className="hover:bg-slate-50 transition-colors">
-                <Link href={`/portal/tickets/${ticket.id}`} className="block p-6">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <h4 className="font-bold text-slate-900 text-lg mb-1">{ticket.title}</h4>
-                      <p className="text-slate-500 text-sm">
-                        {ticket.category} | נוצר: {new Date(ticket.createdAt).toLocaleDateString("he-IL")}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <span className={`px-4 py-1.5 rounded-full text-xs font-bold border ${getTicketStatusBadgeClass(ticket.status)}`}>
-                        {getTicketStatusLabel(ticket.status)}
-                      </span>
-                      <span className="text-blue-600 hover:text-blue-800 text-sm font-semibold border border-blue-200 hover:bg-blue-50 px-4 py-2 rounded-lg transition-colors">
-                        צפייה בפרטים
-                      </span>
-                    </div>
-                  </div>
-                </Link>
-              </li>
+              <TicketCardClient key={ticket.id} ticket={ticket} />
             ))}
           </ul>
         )}
