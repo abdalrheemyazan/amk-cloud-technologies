@@ -17,7 +17,10 @@ const createPrismaClient = () => {
       ssl: { rejectUnauthorized: false },
       max: 1, // Fix EMAXCONNSESSION
       idleTimeoutMillis: 10000,
-      connectionTimeoutMillis: 2000,
+      // With a single pooled connection, concurrent queries (e.g. the Promise.all in
+      // loadCustomerPortalData) queue for it one at a time. 2s wasn't enough headroom
+      // for that queue plus a round trip and threw "timeout exceeded when trying to connect".
+      connectionTimeoutMillis: 10000,
     });
     const adapter = new PrismaPg(pool);
     return new PrismaClient({

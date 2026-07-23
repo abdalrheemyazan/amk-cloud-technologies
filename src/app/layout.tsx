@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { Heebo } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import SessionProvider from "@/components/providers/SessionProvider";
+import { ACCESSIBILITY_BOOTSTRAP_SCRIPT } from "@/lib/accessibility-settings";
 
 const heebo = Heebo({
   subsets: ["hebrew"],
@@ -20,6 +22,7 @@ export const metadata: Metadata = {
 };
 
 import GlobalBackground from "@/components/layout/GlobalBackground";
+import AccessibilityWidget from "@/components/accessibility/AccessibilityWidget";
 
 export default function RootLayout({
   children,
@@ -27,11 +30,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="he" dir="rtl">
+    <html lang="he" dir="rtl" data-scroll-behavior="smooth" suppressHydrationWarning>
       <body className={`${heebo.variable} font-heebo bg-[#F8FAFC] text-[#0F172A] antialiased min-h-screen selection:bg-blue-500/10`}>
+        <Script
+          id="amk-accessibility-bootstrap"
+          strategy="beforeInteractive"
+          dangerouslySetInnerHTML={{ __html: ACCESSIBILITY_BOOTSTRAP_SCRIPT }}
+        />
         <SessionProvider>
-          <GlobalBackground />
-          {children}
+          <AccessibilityWidget>
+            <GlobalBackground />
+            {children}
+          </AccessibilityWidget>
         </SessionProvider>
       </body>
     </html>

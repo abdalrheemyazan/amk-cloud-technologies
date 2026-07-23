@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { signIn } from "next-auth/react";
+import { signIn, getSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import { getPostLoginRedirect } from "@/lib/roles";
 import {
   Lock,
   Mail,
@@ -35,6 +36,8 @@ export default function LoginPage() {
   const [regMessage, setRegMessage] = useState("");
   const [regPassword, setRegPassword] = useState("");
   const [regConfirmPassword, setRegConfirmPassword] = useState("");
+  const [regAgreedToTerms, setRegAgreedToTerms] = useState(false);
+  const [regMarketingConsent, setRegMarketingConsent] = useState(false);
 
   const [regLoading, setRegLoading] = useState(false);
   const [regSuccess, setRegSuccess] = useState(false);
@@ -77,7 +80,8 @@ export default function LoginPage() {
           setError("אירעה שגיאה זמנית בהתחברות. נסו שוב בעוד רגע.");
         }
       } else {
-        router.push("/dashboard");
+        const session = await getSession();
+        router.push(getPostLoginRedirect(session?.user?.role));
       }
     } catch (err) {
       setError("אירעה שגיאה בתהליך ההתחברות.");
@@ -122,6 +126,12 @@ export default function LoginPage() {
 
     if (regPassword !== regConfirmPassword) {
       setRegError("הסיסמאות אינן תואמות. אנא וודאו שוב.");
+      setRegLoading(false);
+      return;
+    }
+
+    if (!regAgreedToTerms) {
+      setRegError("יש לאשר את תנאי השימוש ומדיניות הפרטיות כדי להמשיך.");
       setRegLoading(false);
       return;
     }
@@ -237,7 +247,7 @@ export default function LoginPage() {
                     src="/images/logo.png"
                     alt="AMK Cloud Technologies"
                     width={170}
-                    height={55}
+                    height={40}
                     priority
                     className="h-auto object-contain relative z-10"
                   />
@@ -470,7 +480,7 @@ export default function LoginPage() {
                     src="/images/logo.png"
                     alt="AMK Cloud Technologies"
                     width={170}
-                    height={55}
+                    height={40}
                     priority
                     className="h-auto object-contain relative z-10"
                   />
@@ -585,7 +595,7 @@ export default function LoginPage() {
                     src="/images/logo.png"
                     alt="AMK Cloud Technologies"
                     width={150}
-                    height={48}
+                    height={36}
                     priority
                     className="h-auto object-contain relative z-10"
                   />
@@ -771,10 +781,45 @@ export default function LoginPage() {
 
                       </div>
 
+                      {/* Legal consent checkboxes */}
+                      <div className="space-y-2.5 pt-1">
+                        <label className="flex items-start gap-2 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={regAgreedToTerms}
+                            onChange={(e) => setRegAgreedToTerms(e.target.checked)}
+                            className="mt-0.5 w-4 h-4 accent-blue-600 shrink-0"
+                          />
+                          <span className="text-[11px] text-slate-500 font-semibold leading-relaxed">
+                            אני מאשר/ת שקראתי והסכמתי ל
+                            <Link href="/terms" target="_blank" rel="noopener noreferrer" className="text-blue-600 font-black hover:underline">
+                              תנאי השימוש
+                            </Link>
+                            {" "}ול
+                            <Link href="/privacy" target="_blank" rel="noopener noreferrer" className="text-blue-600 font-black hover:underline">
+                              מדיניות הפרטיות
+                            </Link>
+                            .
+                          </span>
+                        </label>
+
+                        <label className="flex items-start gap-2 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={regMarketingConsent}
+                            onChange={(e) => setRegMarketingConsent(e.target.checked)}
+                            className="mt-0.5 w-4 h-4 accent-blue-600 shrink-0"
+                          />
+                          <span className="text-[11px] text-slate-500 font-semibold leading-relaxed">
+                            אני מאשר/ת קבלת עדכונים והצעות שיווקיות מ־AMK Cloud Technologies.
+                          </span>
+                        </label>
+                      </div>
+
                       {/* Submit */}
                       <button
                         type="submit"
-                        disabled={regLoading}
+                        disabled={regLoading || !regAgreedToTerms}
                         className="w-full h-[52px] bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-black text-sm hover:shadow-[0_8px_25px_rgba(37,99,235,0.22)] active:scale-[0.99] transition-all duration-300 flex items-center justify-center gap-3 disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none mt-2"
                       >
                         {regLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : "שליחת בקשת הצטרפות"}

@@ -1,5 +1,5 @@
 generator client {
-  provider = "prisma-client-js"
+  provider   = "prisma-client-js"
   engineType = "library"
 }
 
@@ -37,34 +37,78 @@ enum UserStatus {
   REJECTED
 }
 
-model User {
-  id              String      @id @default(cuid())
-  name            String?
-  email           String      @unique
-  password        String
-  role            Role        @default(CUSTOMER)
-  status          UserStatus  @default(ACTIVE)
-  companyName     String?
-  phone           String?
-  requestedService String?
-  shortMessage    String?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-  
-  // Custom user settings fields
-  preferredLanguage  String?   @default("he")
-  preferredTheme     String?   @default("light")
-  emailNotifications Boolean   @default(true)
-  monthlyReport      Boolean   @default(true)
+enum SupportTransferStatus {
+  COMPLETED
+  CANCELLED
+}
 
-  tickets         Ticket[]    @relation("UserTickets")
-  assignedTickets Ticket[]    @relation("AgentTickets")
+model User {
+  id               String     @id @default(cuid())
+  name             String?
+  email            String     @unique
+  password         String
+  role             Role       @default(CUSTOMER)
+  status           UserStatus @default(ACTIVE)
+  companyName      String?
+  phone            String?
+  requestedService String?
+  shortMessage     String?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  // Custom user settings fields
+  preferredLanguage  String? @default("he")
+  preferredTheme     String? @default("light")
+  emailNotifications Boolean @default(true)
+  monthlyReport      Boolean @default(true)
+
+  // Customer portal: company details (customer-facing, separate from support-agent fields below)
+  companyIdNumber  String?
+  companyRole      String?
+  companyAddress   String?
+  companyPhone     String?
+  technicalContact String?
+  technicalEmail   String?
+  businessField    String?
+  employeeCount    String?
+  serviceNotes     String? @db.Text
+
+  // Customer portal: notification preferences
+  notifyRequestUpdates    Boolean @default(true)
+  notifyMaintenanceAlerts Boolean @default(true)
+  notifyDocumentUpdates   Boolean @default(false)
+
+  // Personal support-agent profile. Email and role remain security-owned fields.
+  displayName               String?
+  profileImageUrl           String?
+  department                String?
+  supportSpecialty          String?
+  supportLanguages          String[]       @default([])
+  openingMessageTemplate    String?        @db.Text
+  detailsRequestTemplate    String?        @db.Text
+  waitingMessageTemplate    String?        @db.Text
+  closingMessageTemplate    String?        @db.Text
+  maxActiveChats            Int            @default(3)
+  defaultAvailabilityStatus PresenceStatus @default(AVAILABLE)
+  autoAwayMinutes           Int?           @default(30)
+  newRequestNotifications   Boolean        @default(true)
+
+  tickets         Ticket[]           @relation("UserTickets")
+  assignedTickets Ticket[]           @relation("AgentTickets")
   articles        KnowledgeArticle[]
 
   // Live Technical Support relations
-  customerSessions   SupportSession[] @relation("SessionCustomer")
-  technicianSessions SupportSession[] @relation("SessionTechnician")
-  authoredNotes      TechnicianNote[] @relation("TechnicianAuthoredNotes")
+  customerSessions         SupportSession[]         @relation("SessionCustomer")
+  technicianSessions       SupportSession[]         @relation("SessionTechnician")
+  authoredNotes            TechnicianNote[]         @relation("TechnicianAuthoredNotes")
+  sentInternalMessages     InternalSupportMessage[] @relation("InternalMessageSender")
+  receivedInternalMessages InternalSupportMessage[] @relation("InternalMessageRecipient")
+  sentSupportTransfers     SupportTransfer[]        @relation("SupportTransferSender")
+  receivedSupportTransfers SupportTransfer[]        @relation("SupportTransferRecipient")
+  supportActivities        SupportActivity[]        @relation("SupportActivityActor")
+  uploadedSupportFiles     SupportAttachment[]      @relation("SupportAttachmentUploader")
+  clearedInternalChats     InternalChatClearState[] @relation("InternalChatClearViewer")
+  clearedByPeers           InternalChatClearState[] @relation("InternalChatClearPeer")
 
   // NextAuth standard relations
   accounts Account[]
@@ -129,28 +173,135 @@ model MonitoringAlert {
 }
 
 model SupportSession {
-  id           String                     @id @default(cuid())
-  status       String                     @default("PENDING") // PENDING, ACTIVE, COMPLETED
-  customerId   String
-  customer     User                       @relation("SessionCustomer", fields: [customerId], references: [id])
-  technicianId String?
-  technician   User?                      @relation("SessionTechnician", fields: [technicianId], references: [id])
-  createdAt    DateTime                   @default(now())
-  updatedAt    DateTime                   @updatedAt
-  messages     SessionMessage[]
-  remotes      RemoteConnectionRequest[]
-  notes        TechnicianNote[]
+  id               String                    @id @default(cuid())
+  status           String                    @default("PENDING") // PENDING, ACTIVE, COMPLETED, CLOSED, REJECTED, EXPIRED
+  customerId       String
+  customer         User                      @relation("SessionCustomer", fields: [customerId], references: [id])
+  technicianId     String?
+  technician       User?                     @relation("SessionTechnician", fields: [technicianId], references: [id])
+  category         String?
+  subject          String?
+  summary          String?
+  acceptedAt       DateTime?
+  closedAt         DateTime?
+  expiresAt        DateTime?
+  // True only while the session has never been escalated to a human (still AI_CHAT,
+  // or closed by the customer without ever transferring). Flipped to false the moment
+  // it's handed off — that's the signal that lets us hard-delete safely vs. soft-delete
+  // to preserve the support/audit record.
+  isAiOnly         Boolean                   @default(false)
+  customerDeletedAt DateTime?
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
+  messages         SessionMessage[]
+  remotes          RemoteConnectionRequest[]
+  notes            TechnicianNote[]
+  internalMessages InternalSupportMessage[]
+  transfers        SupportTransfer[]
+  publicActivities SupportActivity[]
+  attachments      SupportAttachment[]
+}
+
+model InternalSupportMessage {
+  id          String              @id @default(cuid())
+  senderId    String
+  sender      User                @relation("InternalMessageSender", fields: [senderId], references: [id])
+  recipientId String
+  recipient   User                @relation("InternalMessageRecipient", fields: [recipientId], references: [id])
+  sessionId   String?
+  session     SupportSession?     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  content     String              @db.Text
+  readAt      DateTime?
+  createdAt   DateTime            @default(now())
+  attachments SupportAttachment[]
+
+  @@index([senderId, recipientId, createdAt])
+  @@index([recipientId, readAt, createdAt])
+  @@index([sessionId, createdAt])
+}
+
+model SupportTransfer {
+  id          String                @id @default(cuid())
+  sessionId   String
+  session     SupportSession        @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  fromAgentId String
+  fromAgent   User                  @relation("SupportTransferSender", fields: [fromAgentId], references: [id])
+  toAgentId   String
+  toAgent     User                  @relation("SupportTransferRecipient", fields: [toAgentId], references: [id])
+  note        String?               @db.Text
+  status      SupportTransferStatus @default(COMPLETED)
+  createdAt   DateTime              @default(now())
+
+  @@index([sessionId, createdAt])
+  @@index([toAgentId, createdAt])
+}
+
+model SupportActivity {
+  id        String         @id @default(cuid())
+  sessionId String
+  session   SupportSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  actorId   String?
+  actor     User?          @relation("SupportActivityActor", fields: [actorId], references: [id], onDelete: SetNull)
+  type      String
+  message   String
+  createdAt DateTime       @default(now())
+
+  @@index([sessionId, createdAt])
 }
 
 model SessionMessage {
-  id          String         @id @default(cuid())
+  id          String              @id @default(cuid())
   sessionId   String
-  session     SupportSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session     SupportSession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   senderId    String
   senderRole  Role
   message     String
-  type        String         @default("TEXT") // TEXT, SYSTEM, LOG, SCREENSHOT
-  createdAt   DateTime       @default(now())
+  type        String              @default("TEXT") // TEXT, SYSTEM, LOG, SCREENSHOT
+  attachments Json? // legacy inline attachments retained for backward compatibility
+  createdAt   DateTime            @default(now())
+  deletedAt   DateTime?
+  deletedById String?
+  files       SupportAttachment[]
+
+  @@index([sessionId, deletedAt])
+}
+
+model SupportAttachment {
+  id                String                  @id @default(cuid())
+  sessionId         String?
+  session           SupportSession?         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  sessionMessageId  String?
+  sessionMessage    SessionMessage?         @relation(fields: [sessionMessageId], references: [id], onDelete: Cascade)
+  internalMessageId String?
+  internalMessage   InternalSupportMessage? @relation(fields: [internalMessageId], references: [id], onDelete: Cascade)
+  uploadedById      String
+  uploadedBy        User                    @relation("SupportAttachmentUploader", fields: [uploadedById], references: [id], onDelete: Cascade)
+  fileName          String
+  fileType          String
+  fileSize          Int
+  storageProvider   String                  @default("DATABASE")
+  storagePath       String
+  publicUrl         String?
+  inlineData        String?                 @db.Text
+  createdAt         DateTime                @default(now())
+  expiresAt         DateTime
+
+  @@index([sessionId, createdAt])
+  @@index([sessionMessageId])
+  @@index([internalMessageId])
+  @@index([expiresAt])
+}
+
+model InternalChatClearState {
+  id        String   @id @default(cuid())
+  viewerId  String
+  viewer    User     @relation("InternalChatClearViewer", fields: [viewerId], references: [id], onDelete: Cascade)
+  peerId    String
+  peer      User     @relation("InternalChatClearPeer", fields: [peerId], references: [id], onDelete: Cascade)
+  clearedAt DateTime @default(now())
+
+  @@unique([viewerId, peerId])
+  @@index([clearedAt])
 }
 
 model RemoteConnectionRequest {
@@ -179,18 +330,18 @@ model TechnicianNote {
 
 // NextAuth core models
 model Account {
-  id                 String  @id @default(cuid())
-  userId             String
-  type               String
-  provider           String
-  providerAccountId  String
-  refresh_token      String? @db.Text
-  access_token       String? @db.Text
-  expires_at         Int?
-  token_type         String?
-  scope              String?
-  id_token           String? @db.Text
-  session_state      String?
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -260,6 +411,8 @@ model TechnicianPresence {
   technicianId            String         @unique
   technician              User           @relation(fields: [technicianId], references: [id], onDelete: Cascade)
   status                  PresenceStatus @default(OFFLINE)
+  mode                    String         @default("AUTO") // AUTO | MANUAL — whether `status` is workflow-driven or agent-pinned
+  activeChatsCount        Int            @default(0)
   currentTicketId         String?
   currentSupportSessionId String?
   lastSeenAt              DateTime       @default(now())

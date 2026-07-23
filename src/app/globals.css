@@ -75,6 +75,141 @@
   }
 }
 
+/* Support workspace motion — transform and opacity only, so layout remains stable. */
+@keyframes support-section-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes support-header-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.992);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes support-sidebar-in {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes support-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes support-modal-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes support-modal-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes global-orb-one {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  35% { transform: translate3d(80px, -60px, 0) scale(1.15); }
+  70% { transform: translate3d(-40px, 40px, 0) scale(0.9); }
+}
+
+@keyframes global-orb-two {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  35% { transform: translate3d(-70px, 80px, 0) scale(0.9); }
+  70% { transform: translate3d(50px, -60px, 0) scale(1.1); }
+}
+
+@keyframes global-orb-three {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  35% { transform: translate3d(60px, 90px, 0) scale(1.1); }
+  70% { transform: translate3d(-80px, -40px, 0) scale(0.85); }
+}
+
+.global-orb {
+  will-change: transform;
+}
+
+.global-orb-one { animation: global-orb-one 25s ease-in-out infinite; }
+.global-orb-two { animation: global-orb-two 28s ease-in-out infinite; }
+.global-orb-three { animation: global-orb-three 22s ease-in-out infinite; }
+
+.support-section-in {
+  animation: support-section-in 220ms ease-out both;
+}
+
+.support-header-in {
+  animation: support-header-in 220ms ease-out 20ms both;
+}
+
+.support-sidebar-in {
+  animation: support-sidebar-in 210ms ease-out both;
+}
+
+.support-stagger > * {
+  animation: support-card-in 200ms ease-out backwards;
+}
+
+.support-stagger > :nth-child(2) {
+  animation-delay: 40ms;
+}
+
+.support-stagger > :nth-child(n + 3) {
+  animation-delay: 80ms;
+}
+
+.support-modal-backdrop-in {
+  animation: support-modal-backdrop-in 170ms ease-out both;
+}
+
+.support-modal-panel-in {
+  transform-origin: center bottom;
+  animation: support-modal-panel-in 200ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .support-section-in,
+  .support-header-in,
+  .support-sidebar-in,
+  .support-stagger > *,
+  .support-modal-backdrop-in,
+  .support-modal-panel-in {
+    animation: none !important;
+  }
+
+  .global-orb {
+    animation: none !important;
+  }
+}
+
 /* Scroll Smoothing */
 html {
   scroll-behavior: smooth;
@@ -93,4 +228,136 @@ html {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
+}
+
+/* Global accessibility modes — classes are applied to document.documentElement. */
+html:not(.a11y-reduce-motion) {
+  transition: font-size 180ms ease;
+}
+
+html:not(.a11y-reduce-motion) body {
+  transition: filter 180ms ease, background-color 180ms ease;
+}
+
+html.a11y-text-small {
+  font-size: 95%;
+}
+
+html.a11y-text-large {
+  font-size: 112%;
+}
+
+html.a11y-text-xlarge {
+  font-size: 128%;
+}
+
+html.a11y-readable-font body,
+html.a11y-readable-font * {
+  font-family: Arial, Helvetica, "Noto Sans Hebrew", sans-serif !important;
+}
+
+html.a11y-line-spacing body,
+html.a11y-line-spacing p,
+html.a11y-line-spacing li,
+html.a11y-line-spacing span,
+html.a11y-line-spacing div {
+  line-height: 1.8 !important;
+}
+
+html.a11y-letter-spacing body,
+html.a11y-letter-spacing * {
+  letter-spacing: 0.035em !important;
+}
+
+html.a11y-highlight-links a,
+html.a11y-highlight-links button[role="link"],
+html.a11y-highlight-links [role="link"] {
+  color: #003f9e !important;
+  background-color: rgba(254, 240, 138, 0.55) !important;
+  font-weight: 700 !important;
+  text-decoration-line: underline !important;
+  text-decoration-thickness: 3px !important;
+  text-decoration-color: #b45309 !important;
+  text-underline-offset: 4px !important;
+  outline: 2px solid #f59e0b !important;
+  outline-offset: 2px !important;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+html.a11y-reduce-motion {
+  scroll-behavior: auto !important;
+}
+
+html.a11y-reduce-motion *,
+html.a11y-reduce-motion *::before,
+html.a11y-reduce-motion *::after {
+  animation: none !important;
+  scroll-behavior: auto !important;
+  transition: none !important;
+}
+
+html.a11y-reduce-motion [data-support-motion] {
+  opacity: 1 !important;
+  transform: none !important;
+}
+
+html.a11y-high-contrast body {
+  background: #ffffff !important;
+  color: #020617 !important;
+  filter: contrast(1.4) saturate(1.08);
+}
+
+html.a11y-high-contrast * {
+  border-color: #334155 !important;
+}
+
+html.a11y-high-contrast a,
+html.a11y-high-contrast button {
+  background-color: #ffffff !important;
+  color: #003cff !important;
+}
+
+html.a11y-high-contrast input,
+html.a11y-high-contrast textarea,
+html.a11y-high-contrast select {
+  background: #ffffff !important;
+  border-color: #0f172a !important;
+  color: #020617 !important;
+}
+
+html.a11y-grayscale {
+  filter: grayscale(1);
+}
+
+html.a11y-keyboard-focus *:focus-visible {
+  outline: 3px solid #2563eb !important;
+  outline-offset: 3px !important;
+  box-shadow: 0 0 0 5px rgba(37, 99, 235, 0.18) !important;
+}
+
+.portal-policy-content > * + * {
+  margin-top: 1.25rem;
+}
+
+.portal-policy-content > section {
+  scroll-margin-top: 6rem;
+  padding-bottom: 1.5rem;
+}
+
+.portal-policy-content > section:last-child {
+  padding-bottom: 0;
+}
+
+.portal-policy-content > section > div:first-child {
+  margin-bottom: 0.625rem;
+}
+
+.portal-policy-content > section h2 {
+  font-size: 1.05rem;
+}
+
+.portal-policy-content > section > div:last-child {
+  font-size: 0.8125rem;
+  line-height: 1.75rem;
 }

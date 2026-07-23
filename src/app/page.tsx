@@ -24,6 +24,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useState, useEffect, useRef } from "react";
 import { motion, useInView, AnimatePresence } from "framer-motion";
+import { LEGAL_LINKS } from "@/lib/legal-links";
 
 function CountUp({ end, decimals = 0, suffix = "", className = "text-3xl lg:text-4xl font-black text-slate-900 leading-none" }: { end: number, decimals?: number, suffix?: string, className?: string }) {
   const [value, setValue] = useState(0);
@@ -392,7 +393,7 @@ export default function LandingPage() {
               src="/images/logo.png"
               alt="AMK Cloud Technologies"
               width={195}
-              height={65}
+              height={46}
               
               priority
               className="h-auto object-contain transition-all duration-300 opacity-95 hover:opacity-100 hover:drop-shadow-[0_0_15px_rgba(37,99,235,0.22)]"
@@ -449,7 +450,7 @@ export default function LandingPage() {
                     src="/images/logo.png"
                     alt="AMK"
                     width={130}
-                    height={40}
+                    height={31}
                     
                     className="object-contain"
                   />
@@ -549,6 +550,7 @@ export default function LandingPage() {
                   src="/images/cloud2.png"
                   alt="AMK Cloud Infrastructure"
                   fill
+                  sizes="(max-width: 768px) 100vw, 620px"
                   priority
                   quality={100}
                   
@@ -1138,8 +1140,8 @@ export default function LandingPage() {
                   src="/images/teamviewer.png"
                   alt="TeamViewer"
                   width={180}
-                  height={80}
-                  className="object-contain relative z-10 w-full h-full filter brightness-105"
+                  height={112}
+                  className="relative z-10 h-full w-auto max-w-full object-contain filter brightness-105"
                 />
               </div>
               <p className="text-slate-500 text-xs md:text-sm font-bold mb-6 leading-relaxed">התוכנה המומלצת לחיבור מרחוק</p>
@@ -1163,8 +1165,8 @@ export default function LandingPage() {
                   src="/images/anydesk.png"
                   alt="AnyDesk"
                   width={180}
-                  height={80}
-                  className="object-contain relative z-10 w-full h-full filter brightness-105"
+                  height={34}
+                  className="relative z-10 h-auto w-full max-h-full object-contain filter brightness-105"
                 />
               </div>
               <p className="text-slate-500 text-xs md:text-sm font-bold mb-6 leading-relaxed">אפליקציה קלה ומהירה במיוחד</p>
@@ -1180,6 +1182,18 @@ export default function LandingPage() {
           </p>
 
           <div className="w-full h-px bg-slate-200/80 mb-8" />
+
+          <nav className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 mb-5">
+            {LEGAL_LINKS.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className="text-xs font-bold text-slate-400 hover:text-blue-600 transition-colors"
+              >
+                {link.label}
+              </Link>
+            ))}
+          </nav>
 
           <p className="text-slate-400 text-xs font-bold">
             © {new Date().getFullYear()} AMK Cloud Technologies. כל הזכויות שמורות.

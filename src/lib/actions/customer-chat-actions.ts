@@ -1,0 +1,603 @@
+"use server";
+
+import { randomUUID } from "node:crypto";
+import { getServerSession } from "next-auth";
+import { revalidatePath } from "next/cache";
+import type { Content } from "@google/genai";
+import { authOptions } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import {
+  GeminiNotConfiguredError,
+  generateGeminiText,
+} from "@/lib/ai/gemini";
+import {
+  buildIntentReply,
+  buildNoKnowledgeMatchAnswer,
+  classifyChatIntent,
+  detectMessageLanguage,
+} from "@/lib/ai/chat-intent";
+import {
+  discardStagedSupportAttachments,
+  stageSupportAttachments,
+  storedSupportAttachmentView,
+  supportAttachmentCreateData,
+  supportAttachmentExpiry,
+  validateSupportAttachments,
+  type SupportAttachmentUpload,
+  type SupportAttachmentView,
+} from "@/lib/support-attachments";
+import { removeSupportAttachmentObjects } from "@/lib/support-attachment-storage";
+
+const AI_STATUS = "AI_CHAT";
+const AI_SENDER_ID = "gemini-amk-support";
+const MAX_MESSAGE_LENGTH = 3000;
+const COOLDOWN_MS = 1500;
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const GENERIC_AI_ERROR =
+  "לא ניתן לקבל תשובה מהעוזר החכם כרגע. אפשר לנסות שוב או להעביר את הפנייה לנציג תמיכה.";
+const MISSING_KEY_ERROR = "העוזר החכם אינו זמין כרגע.";
+const GENERIC_ACTION_ERROR = "לא ניתן לבצע את הפעולה כרגע. נסה שוב בעוד מספר רגעים.";
+const DELETED_MESSAGE_PLACEHOLDER = "הודעה נמחקה";
+
+type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string; conversationId?: string };
+
+export type CustomerAiChatMessage = {
+  id: string;
+  from: "bot" | "user";
+  text: string;
+  createdAt: string;
+  attachments: SupportAttachmentView[];
+  deletable: boolean;
+  deleted: boolean;
+};
+
+export type CustomerAiConversationView = {
+  conversationId: string;
+  category: string | null;
+  messages: CustomerAiChatMessage[];
+};
+
+export type SendCustomerChatInput = {
+  conversationId?: string | null;
+  message: string;
+  category?: string | null;
+  attachments?: SupportAttachmentUpload[];
+};
+
+async function requireCustomer() {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id || session.user.role !== "CUSTOMER") return null;
+  return { id: session.user.id as string };
+}
+
+function expiresAt() {
+  return new Date(Date.now() + SESSION_TTL_MS);
+}
+
+function messageView(message: {
+  id: string;
+  senderRole: string;
+  message: string;
+  createdAt: Date;
+  deletedAt: Date | null;
+  files: Array<{ id: string; fileName: string; fileSize: number; fileType: string }>;
+}): CustomerAiChatMessage {
+  const isDeleted = !!message.deletedAt;
+  const isCustomerMessage = message.senderRole === "CUSTOMER";
+  return {
+    id: message.id,
+    from: isCustomerMessage ? "user" : "bot",
+    text: isDeleted ? DELETED_MESSAGE_PLACEHOLDER : message.message,
+    createdAt: message.createdAt.toISOString(),
+    attachments: isDeleted ? [] : message.files.map(storedSupportAttachmentView),
+    deletable: isCustomerMessage && !isDeleted,
+    deleted: isDeleted,
+  };
+}
+
+function compactSnippet(value: string | null, maxLength = 900) {
+  return value?.replace(/\s+/g, " ").trim().slice(0, maxLength) || "";
+}
+
+function searchTerms(message: string, category: string | null) {
+  return Array.from(
+    new Set(
+      `${category || ""} ${message}`
+        .toLocaleLowerCase("he")
+        .split(/[^\p{L}\p{N}]+/u)
+        .filter((term) => term.length >= 3)
+        .slice(0, 6),
+    ),
+  );
+}
+
+async function loadSafeKnowledge(message: string, category: string | null) {
+  const terms = searchTerms(message, category);
+  const categoryFilter = category
+    ? [{ category: { contains: category.slice(0, 80), mode: "insensitive" as const } }]
+    : [];
+  const termFilters = terms.flatMap((term) => [
+    { title: { contains: term, mode: "insensitive" as const } },
+    { content: { contains: term, mode: "insensitive" as const } },
+    { category: { contains: term, mode: "insensitive" as const } },
+    { tags: { has: term } },
+  ]);
+
+  // With no category and no usable search terms (e.g. a very short message),
+  // there's no real signal to ground on — matching every published article
+  // regardless of relevance would hand Gemini unrelated context, so bail out.
+  if (categoryFilter.length === 0 && termFilters.length === 0) {
+    return { hasMatch: false, text: "" };
+  }
+
+  const articles = await prisma.knowledgeArticle.findMany({
+    where: {
+      isPublished: true,
+      audience: "CUSTOMER",
+      OR: [...categoryFilter, ...termFilters],
+    },
+    select: {
+      title: true,
+      category: true,
+      content: true,
+      symptoms: true,
+      resolutionSteps: true,
+      customerReplyTemplate: true,
+    },
+    orderBy: { updatedAt: "desc" },
+    take: 3,
+  });
+
+  const text = articles
+    .map((article) =>
+      [
+        `Title: ${article.title}`,
+        `Category: ${article.category}`,
+        compactSnippet(article.content),
+        compactSnippet(article.symptoms, 400),
+        compactSnippet(article.resolutionSteps, 700),
+        compactSnippet(article.customerReplyTemplate, 500),
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    )
+    .join("\n\n---\n\n");
+
+  return { hasMatch: articles.length > 0, text };
+}
+
+async function saveUserMessage({
+  attachments,
+  conversationId,
+  message,
+  userId,
+}: {
+  attachments: ReturnType<typeof validateSupportAttachments> & { ok: true };
+  conversationId: string;
+  message: string;
+  userId: string;
+}) {
+  const messageId = randomUUID();
+  const staged = await stageSupportAttachments({
+    attachments: attachments.attachments,
+    messageId,
+    scope: conversationId,
+  });
+
+  try {
+    return await prisma.sessionMessage.create({
+      data: {
+        id: messageId,
+        sessionId: conversationId,
+        senderId: userId,
+        senderRole: "CUSTOMER",
+        message,
+        files:
+          staged.length > 0
+            ? {
+                create: staged.map((attachment) =>
+                  supportAttachmentCreateData(attachment, {
+                    expiresAt: supportAttachmentExpiry(),
+                    sessionId: conversationId,
+                    uploadedById: userId,
+                  }),
+                ),
+              }
+            : undefined,
+      },
+      include: { files: true },
+    });
+  } catch (error) {
+    await discardStagedSupportAttachments(staged).catch((cleanupError) => {
+      console.error("Failed to roll back customer AI attachments:", cleanupError);
+    });
+    throw error;
+  }
+}
+
+export async function getCustomerAiConversation(
+  conversationId: string,
+): Promise<ActionResult<CustomerAiConversationView>> {
+  const customer = await requireCustomer();
+  if (!customer) return { ok: false, error: "UNAUTHORIZED" };
+  if (!conversationId || conversationId.length > 100) return { ok: false, error: "NOT_FOUND" };
+
+  try {
+    const conversation = await prisma.supportSession.findFirst({
+      where: {
+        id: conversationId,
+        customerId: customer.id,
+        status: AI_STATUS,
+        customerDeletedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      select: {
+        id: true,
+        category: true,
+        messages: {
+          orderBy: { createdAt: "asc" },
+          take: 40,
+          include: { files: true },
+        },
+      },
+    });
+    if (!conversation) return { ok: false, error: "NOT_FOUND" };
+
+    return {
+      ok: true,
+      data: {
+        conversationId: conversation.id,
+        category: conversation.category,
+        messages: conversation.messages.map(messageView),
+      },
+    };
+  } catch (error) {
+    if (process.env.NODE_ENV === "development") console.error("getCustomerAiConversation failed:", error);
+    return { ok: false, error: GENERIC_AI_ERROR };
+  }
+}
+
+export async function sendCustomerChatMessage(
+  input: SendCustomerChatInput,
+): Promise<ActionResult<{ conversationId: string; userMessage: CustomerAiChatMessage; reply: CustomerAiChatMessage }>> {
+  const customer = await requireCustomer();
+  if (!customer) return { ok: false, error: "UNAUTHORIZED" };
+
+  const message = typeof input.message === "string" ? input.message.trim() : "";
+  const category = typeof input.category === "string" ? input.category.trim().slice(0, 80) || null : null;
+  if (message.length > MAX_MESSAGE_LENGTH) {
+    return { ok: false, error: "ניתן לשלוח עד 3,000 תווים בכל הודעה." };
+  }
+
+  const validatedAttachments = validateSupportAttachments(input.attachments);
+  if (!validatedAttachments.ok) return { ok: false, error: validatedAttachments.error };
+  if (!message && validatedAttachments.attachments.length === 0) {
+    return { ok: false, error: "יש לכתוב הודעה או לצרף תמונה לפני השליחה." };
+  }
+  const persistedMessage = message || "צורפה תמונה לבדיקה.";
+
+  const startedAt = performance.now();
+  let conversationId: string | undefined;
+  try {
+    const existing = input.conversationId
+      ? await prisma.supportSession.findFirst({
+          where: { id: input.conversationId, customerId: customer.id, status: AI_STATUS, customerDeletedAt: null },
+          select: { id: true, category: true, expiresAt: true },
+        })
+      : null;
+
+    if (input.conversationId && (!existing || (existing.expiresAt && existing.expiresAt <= new Date()))) {
+      return { ok: false, error: "השיחה אינה זמינה עוד. אפשר להתחיל שיחה חדשה." };
+    }
+
+    const conversation =
+      existing ??
+      (await prisma.supportSession.create({
+        data: {
+          customerId: customer.id,
+          status: AI_STATUS,
+          isAiOnly: true,
+          category,
+          subject: "שיחה עם העוזר החכם של AMK",
+          summary: persistedMessage.slice(0, 1000),
+          expiresAt: expiresAt(),
+        },
+        select: { id: true, category: true, expiresAt: true },
+      }));
+    conversationId = conversation.id;
+
+    const previousMessages = await prisma.sessionMessage.findMany({
+      where: { sessionId: conversation.id, deletedAt: null },
+      select: { senderRole: true, message: true, createdAt: true },
+      orderBy: { createdAt: "desc" },
+      take: 6,
+    });
+    const latestCustomerMessage = previousMessages.find((entry) => entry.senderRole === "CUSTOMER");
+    if (latestCustomerMessage && Date.now() - latestCustomerMessage.createdAt.getTime() < COOLDOWN_MS) {
+      return { ok: false, error: "יש להמתין רגע קצר לפני שליחת הודעה נוספת.", conversationId };
+    }
+
+    const savedUserMessage = await saveUserMessage({
+      attachments: validatedAttachments,
+      conversationId: conversation.id,
+      message: persistedMessage,
+      userId: customer.id,
+    });
+
+    const selectedCategory = category || conversation.category;
+    const language = detectMessageLanguage(message || persistedMessage);
+    // Attachments alone (no text) always mean a real support need — never
+    // classify those as small talk just because there's no message to scan.
+    const intent = validatedAttachments.attachments.length > 0 && !message
+      ? "AMK_SUPPORT_QUESTION"
+      : classifyChatIntent(message);
+    const cannedReply = buildIntentReply(intent, language);
+
+    let replyText: string;
+    if (cannedReply) {
+      // Greeting / thanks / capabilities / off-topic / sensitive-info intents never
+      // touch the knowledge base or Gemini — they're answered locally and instantly.
+      replyText = cannedReply;
+    } else {
+      const knowledge = await loadSafeKnowledge(persistedMessage, selectedCategory);
+      if (!knowledge.hasMatch) {
+        // No relevant AMK knowledge base article matched — never let Gemini
+        // fall back to general knowledge, just return the fixed fallback.
+        replyText = buildNoKnowledgeMatchAnswer(language);
+      } else {
+        const attachmentMetadata = validatedAttachments.attachments.length
+          ? validatedAttachments.attachments
+              .map((attachment) => `${attachment.fileName} (${attachment.fileType}, ${attachment.fileSize} bytes)`)
+              .join(", ")
+          : "None";
+        const currentPrompt = [
+          `Customer selected category: ${selectedCategory || "Not selected"}`,
+          `Customer message: ${persistedMessage}`,
+          `Screenshot metadata (images are not provided to the model): ${attachmentMetadata}`,
+          `Relevant customer-facing knowledge base:\n${knowledge.text}`,
+          "Answer the customer directly and do not claim access to account-specific data.",
+        ].join("\n\n");
+        const contents: Content[] = [
+          ...previousMessages.reverse().map((entry) => ({
+            role: entry.senderRole === "CUSTOMER" ? "user" : "model",
+            parts: [{ text: entry.message.slice(0, MAX_MESSAGE_LENGTH) }],
+          })),
+          { role: "user", parts: [{ text: currentPrompt }] },
+        ];
+
+        try {
+          replyText = await generateGeminiText({ contents });
+        } catch (error) {
+          if (process.env.NODE_ENV === "development" && !(error instanceof GeminiNotConfiguredError)) {
+            console.error("Gemini customer chat failed:", error);
+          }
+          return {
+            ok: false,
+            error: error instanceof GeminiNotConfiguredError ? MISSING_KEY_ERROR : GENERIC_AI_ERROR,
+            conversationId,
+          };
+        }
+      }
+    }
+
+    const assistantMessage = await prisma.sessionMessage.create({
+      data: {
+        sessionId: conversation.id,
+        senderId: AI_SENDER_ID,
+        senderRole: "SUPPORT_AGENT",
+        type: "AI_ASSISTANT",
+        message: replyText.slice(0, 5000),
+      },
+      include: { files: true },
+    });
+    await prisma.supportSession.update({
+      where: { id: conversation.id },
+      data: {
+        category: selectedCategory,
+        summary: persistedMessage.slice(0, 1000),
+        expiresAt: expiresAt(),
+      },
+    });
+
+    if (process.env.NODE_ENV === "development") {
+      console.info(`[perf] customer-ai-message ${Math.round(performance.now() - startedAt)}ms`);
+    }
+
+    return {
+      ok: true,
+      data: {
+        conversationId: conversation.id,
+        userMessage: messageView(savedUserMessage),
+        reply: messageView(assistantMessage),
+      },
+    };
+  } catch (error) {
+    if (process.env.NODE_ENV === "development") console.error("sendCustomerChatMessage failed:", error);
+    return { ok: false, error: GENERIC_AI_ERROR, conversationId };
+  }
+}
+
+export async function handoffCustomerAiConversation({
+  conversationId,
+  category,
+  attachments,
+}: {
+  conversationId: string;
+  category?: string | null;
+  attachments?: SupportAttachmentUpload[];
+}): Promise<ActionResult<{ sessionId: string; agentAvailable: boolean }>> {
+  const customer = await requireCustomer();
+  if (!customer) return { ok: false, error: "UNAUTHORIZED" };
+
+  const validatedAttachments = validateSupportAttachments(attachments);
+  if (!validatedAttachments.ok) return { ok: false, error: validatedAttachments.error };
+
+  try {
+    const conversation = await prisma.supportSession.findFirst({
+      where: { id: conversationId, customerId: customer.id, status: AI_STATUS, customerDeletedAt: null },
+      select: {
+        id: true,
+        category: true,
+        messages: {
+          orderBy: { createdAt: "asc" },
+          take: 40,
+          where: { deletedAt: null },
+          select: { senderRole: true, message: true },
+        },
+      },
+    });
+    if (!conversation) return { ok: false, error: "השיחה אינה זמינה עוד." };
+
+    if (validatedAttachments.attachments.length > 0) {
+      await saveUserMessage({
+        attachments: validatedAttachments,
+        conversationId: conversation.id,
+        message: "צורפו צילומי מסך להעברה לנציג התמיכה.",
+        userId: customer.id,
+      });
+    }
+
+    const transcript = conversation.messages
+      .map((entry) => `${entry.senderRole === "CUSTOMER" ? "לקוח" : "עוזר חכם"}: ${entry.message}`)
+      .join("\n")
+      .slice(0, 12_000);
+    let summary = transcript.slice(0, 1800);
+    try {
+      summary = await generateGeminiText({
+        systemInstruction:
+          "Summarize this AMK customer support conversation for a human support agent. Write concise Hebrew. Include the problem, category, troubleshooting already suggested, and unresolved issue. Never add facts.",
+        contents: [{ role: "user", parts: [{ text: transcript }] }],
+        timeoutMs: 8_000,
+      });
+    } catch (error) {
+      if (process.env.NODE_ENV === "development" && !(error instanceof GeminiNotConfiguredError)) {
+        console.error("Gemini handoff summary failed:", error);
+      }
+    }
+
+    const selectedCategory = category?.trim().slice(0, 80) || conversation.category || "תמיכה כללית";
+    const [availableAgent] = await Promise.all([
+      prisma.technicianPresence.findFirst({ where: { status: "AVAILABLE" }, select: { id: true } }),
+      prisma.supportSession.update({
+        where: { id: conversation.id },
+        data: {
+          status: "PENDING",
+          isAiOnly: false,
+          category: selectedCategory,
+          subject: `פנייה מהצ׳אט — ${selectedCategory}`,
+          summary: `סיכום AI לנציג:\n${summary}`.slice(0, 2000),
+          expiresAt: expiresAt(),
+          publicActivities: {
+            create: { type: "REQUEST_RECEIVED", message: "הבקשה שלך התקבלה" },
+          },
+        },
+      }),
+    ]);
+
+    revalidatePath("/support/agent");
+    revalidatePath("/portal");
+    return { ok: true, data: { sessionId: conversation.id, agentAvailable: Boolean(availableAgent) } };
+  } catch (error) {
+    if (process.env.NODE_ENV === "development") console.error("handoffCustomerAiConversation failed:", error);
+    return { ok: false, error: "לא ניתן להעביר את השיחה לנציג כרגע. נסה שוב בעוד מספר רגעים." };
+  }
+}
+
+// Only ever closes the AI-only side of a conversation — a session that was
+// escalated to a human (PENDING/ACTIVE/...) has its own cancel/close paths
+// that a support agent or the existing cancelSupportRequest action own.
+export async function closeCustomerChatSession(sessionId: string): Promise<ActionResult<undefined>> {
+  const customer = await requireCustomer();
+  if (!customer) return { ok: false, error: "UNAUTHORIZED" };
+
+  try {
+    const result = await prisma.supportSession.updateMany({
+      where: { id: sessionId, customerId: customer.id, status: AI_STATUS },
+      data: { status: "CLOSED", closedAt: new Date() },
+    });
+    if (result.count === 0) return { ok: false, error: GENERIC_ACTION_ERROR };
+
+    return { ok: true, data: undefined };
+  } catch (error) {
+    if (process.env.NODE_ENV === "development") console.error("closeCustomerChatSession failed:", error);
+    return { ok: false, error: GENERIC_ACTION_ERROR };
+  }
+}
+
+// AI-only conversations (never escalated) are hard-deleted outright. Anything
+// that was ever handed off to a human keeps its row for the support/audit
+// record — the customer only stops seeing it (customerDeletedAt).
+export async function deleteCustomerChatSession(sessionId: string): Promise<ActionResult<undefined>> {
+  const customer = await requireCustomer();
+  if (!customer) return { ok: false, error: "UNAUTHORIZED" };
+
+  try {
+    const session = await prisma.supportSession.findFirst({
+      where: { id: sessionId, customerId: customer.id },
+      select: { id: true, isAiOnly: true },
+    });
+    if (!session) return { ok: false, error: GENERIC_ACTION_ERROR };
+
+    if (session.isAiOnly) {
+      const attachments = await prisma.supportAttachment.findMany({
+        where: { sessionId: session.id },
+        select: { storageProvider: true, storagePath: true },
+      });
+      await removeSupportAttachmentObjects(attachments).catch((error) => {
+        console.error("Failed to remove attachments for deleted AI chat:", error);
+      });
+      await prisma.supportSession.delete({ where: { id: session.id } });
+    } else {
+      await prisma.supportSession.update({
+        where: { id: session.id },
+        data: { customerDeletedAt: new Date() },
+      });
+    }
+
+    return { ok: true, data: undefined };
+  } catch (error) {
+    if (process.env.NODE_ENV === "development") console.error("deleteCustomerChatSession failed:", error);
+    return { ok: false, error: GENERIC_ACTION_ERROR };
+  }
+}
+
+// Soft delete only — the customer can hide their own messages, but the row stays
+// so staff-side history and prior AI context stay intact for anyone who already
+// saw it. Only the message's author (the customer themselves) can delete it.
+export async function deleteCustomerChatMessage(messageId: string): Promise<ActionResult<undefined>> {
+  const customer = await requireCustomer();
+  if (!customer) return { ok: false, error: "UNAUTHORIZED" };
+
+  try {
+    const message = await prisma.sessionMessage.findUnique({
+      where: { id: messageId },
+      select: {
+        id: true,
+        senderId: true,
+        senderRole: true,
+        deletedAt: true,
+        session: { select: { customerId: true } },
+      },
+    });
+
+    if (
+      !message ||
+      message.deletedAt ||
+      message.session.customerId !== customer.id ||
+      message.senderId !== customer.id ||
+      message.senderRole !== "CUSTOMER"
+    ) {
+      return { ok: false, error: GENERIC_ACTION_ERROR };
+    }
+
+    await prisma.sessionMessage.update({
+      where: { id: messageId },
+      data: { deletedAt: new Date(), deletedById: customer.id },
+    });
+
+    return { ok: true, data: undefined };
+  } catch (error) {
+    if (process.env.NODE_ENV === "development") console.error("deleteCustomerChatMessage failed:", error);
+    return { ok: false, error: GENERIC_ACTION_ERROR };
+  }
+}

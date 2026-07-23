@@ -52,18 +52,18 @@ export const authOptions: NextAuthOptions = {
           throw new Error("REJECTED_USER");
         }
 
-        // Rule #1: When technician logs in, set status to ONLINE and update lastSeenAt
-        if (user.role === "TECHNICIAN") {
+        // Keep every staff member visible to the support team presence service.
+        if (user.role !== "CUSTOMER") {
           try {
             await prisma.technicianPresence.upsert({
               where: { technicianId: user.id },
               update: {
-                status: "ONLINE",
+                status: user.defaultAvailabilityStatus,
                 lastSeenAt: new Date(),
               },
               create: {
                 technicianId: user.id,
-                status: "ONLINE",
+                status: user.defaultAvailabilityStatus,
                 lastSeenAt: new Date(),
               },
             });
@@ -75,19 +75,19 @@ export const authOptions: NextAuthOptions = {
         return {
           id: user.id,
           email: user.email,
-          name: user.name,
+          name: user.displayName?.trim() || user.name,
           role: user.role,
           status: user.status,
-        } as any;
+        };
       },
     }),
   ],
   callbacks: {
     async jwt({ token, user, trigger, session }) {
       if (user) {
-        token.role = (user as any).role;
+        token.role = user.role;
         token.id = user.id;
-        token.status = (user as any).status;
+        token.status = user.status;
       } else if (token.id && !token.role) {
         try {
           const dbUser = await prisma.user.findUnique({
@@ -109,9 +109,9 @@ export const authOptions: NextAuthOptions = {
     },
     async session({ session, token }) {
       if (session.user) {
-        (session.user as any).role = token.role || "CUSTOMER";
-        (session.user as any).id = token.id;
-        (session.user as any).status = token.status;
+        session.user.role = token.role || "CUSTOMER";
+        session.user.id = token.id;
+        session.user.status = token.status;
         if (token.name) {
           session.user.name = token.name;
         }

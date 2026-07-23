@@ -1,0 +1,118 @@
+@keyframes orbit {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+@property --support-border-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes support-border-orbit {
+  to {
+    --support-border-angle: 1turn;
+  }
+}
+
+.border {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background: rgba(203, 213, 225, 0.72);
+}
+
+.border::before {
+  position: absolute;
+  z-index: 0;
+  inset: -150%;
+  content: "";
+  pointer-events: none;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg 142deg,
+    rgba(37, 99, 235, 0.16) 154deg,
+    rgba(37, 99, 235, 0.72) 171deg,
+    rgba(6, 182, 212, 0.68) 184deg,
+    rgba(37, 99, 235, 0.2) 201deg,
+    transparent 218deg 360deg
+  );
+  animation: orbit 8s linear infinite;
+  opacity: 0.62;
+  will-change: transform;
+}
+
+.surface {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .border::before {
+    animation: none;
+  }
+}
+
+:global(html.a11y-reduce-motion) .border::before {
+  animation: none !important;
+}
+
+:global(html.a11y-high-contrast) .border {
+  background: #334155 !important;
+}
+
+/* Support header: a normal gray border stays put; only a thin blue/cyan
+   accent sweeps around it via a masked ring pseudo-element. */
+.headerFrame {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.headerRunner {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+.headerRunner::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  padding: 1.5px;
+  border-radius: inherit;
+  background: conic-gradient(
+    from var(--support-border-angle),
+    transparent 0deg,
+    transparent 70deg,
+    rgba(37, 99, 235, 0.85) 95deg,
+    rgba(6, 182, 212, 0.75) 115deg,
+    transparent 145deg,
+    transparent 360deg
+  );
+  animation: support-border-orbit 8s linear infinite;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .headerRunner::before {
+    animation: none;
+  }
+}
+
+:global(html.a11y-reduce-motion) .headerRunner::before {
+  animation: none !important;
+}
+
+:global(html.a11y-high-contrast) .headerRunner::before {
+  display: none;
+}
