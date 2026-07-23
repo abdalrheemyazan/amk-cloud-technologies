@@ -1,25 +1,26 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { Menu, X } from "lucide-react";
 import CustomerPortalBrand from "./CustomerPortalBrand";
 import CustomerPortalSidebarContent from "./CustomerPortalSidebarContent";
-import type { CustomerSectionKey } from "@/lib/customer-portal-sections";
+import { pathnameToSection, type CustomerSectionKey } from "@/lib/customer-portal-sections";
 
 export default function CustomerPortalShell({
   userName,
   userImage,
-  activeSection,
   badges,
   children,
 }: {
   userName: string | null;
   userImage?: string | null;
-  activeSection: CustomerSectionKey;
   badges?: Partial<Record<CustomerSectionKey, number>>;
   children: ReactNode;
 }) {
+  const pathname = usePathname();
+  const activeSection = pathnameToSection(pathname);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   function handleNavigate() {
@@ -97,9 +98,7 @@ export default function CustomerPortalShell({
 
       <div className="min-w-0 flex-1">
         <main className="mx-auto flex max-w-[1200px] flex-col gap-6 px-4 py-6 md:px-8 md:py-8">
-          <div key={activeSection} className="support-fade-up">
-            {children}
-          </div>
+          {children}
         </main>
       </div>
     </div>

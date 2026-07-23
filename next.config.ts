@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["@prisma/client", "bcryptjs"],
+  serverExternalPackages: ["@prisma/client", "bcryptjs", "pdf-parse"],
   experimental: {
     // Support messages allow up to 3 x 5 MB images. Base64 transport adds
     // roughly 33%, so keep both Server Action and Proxy buffering bounded

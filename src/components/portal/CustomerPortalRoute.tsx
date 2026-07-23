@@ -1,6 +1,5 @@
-import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
-import { authOptions } from "@/lib/auth";
+import { getPortalSession } from "@/lib/portal-session";
 import { loadCustomerPortalData } from "@/lib/customer-portal-data";
 import { isStaffRole } from "@/lib/roles";
 import type { CustomerSectionKey } from "@/lib/customer-portal-sections";
@@ -19,7 +18,7 @@ export default async function CustomerPortalRoute({
   activeSection: CustomerSectionKey;
   query?: Record<string, string | string[] | undefined>;
 }) {
-  const session = await getServerSession(authOptions);
+  const session = await getPortalSession();
 
   if (!session?.user) {
     redirect("/login");

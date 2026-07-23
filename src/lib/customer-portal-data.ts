@@ -1,5 +1,6 @@
 import "server-only";
 
+import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import { getCustomerProfileById, type CustomerProfile } from "@/lib/customer-profile-data";
 import type { CustomerSectionKey } from "@/lib/customer-portal-sections";
@@ -14,7 +15,34 @@ export type CustomerPortalInitialData = {
   profile: CustomerProfile | null;
 };
 
+export type PortalShellData = {
+  displayName: string | null;
+  profileImageUrl: string | null;
+  openRequestsCount: number;
+};
+
 const OPEN_STATUSES = ["PENDING", "ACTIVE"];
+
+// The persistent portal layout (sidebar/user card/badge) and the active
+// section's page both need this — React's cache() dedupes it to a single
+// DB round trip per request instead of fetching it twice.
+export const getPortalShellData = cache(async (userId: string): Promise<PortalShellData> => {
+  const [basicUser, openRequestsCount] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true, displayName: true, profileImageUrl: true },
+    }),
+    prisma.supportSession.count({
+      where: { customerId: userId, status: { in: OPEN_STATUSES } },
+    }),
+  ]);
+
+  return {
+    displayName: basicUser?.displayName?.trim() || basicUser?.name?.trim() || null,
+    profileImageUrl: basicUser?.profileImageUrl ?? null,
+    openRequestsCount,
+  };
+});
 
 function requestSummary(session: {
   id: string;
@@ -45,14 +73,8 @@ export async function loadCustomerPortalData(
   const needsAvailability = activeSection === "overview" || activeSection === "chat";
   const needsFullProfile = activeSection === "settings";
 
-  const [basicUser, openRequestsCount, recentSessions, availableAgent, profile] = await Promise.all([
-    prisma.user.findUnique({
-      where: { id: userId },
-      select: { name: true, displayName: true, profileImageUrl: true },
-    }),
-    prisma.supportSession.count({
-      where: { customerId: userId, status: { in: OPEN_STATUSES } },
-    }),
+  const [shell, recentSessions, availableAgent, profile] = await Promise.all([
+    getPortalShellData(userId),
     needsRequests
       ? prisma.supportSession.findMany({
           where: { customerId: userId, status: { not: "AI_CHAT" } },
@@ -83,9 +105,9 @@ export async function loadCustomerPortalData(
   }
 
   return {
-    displayName: basicUser?.displayName?.trim() || basicUser?.name?.trim() || null,
-    profileImageUrl: basicUser?.profileImageUrl ?? null,
-    openRequestsCount,
+    displayName: shell.displayName,
+    profileImageUrl: shell.profileImageUrl,
+    openRequestsCount: shell.openRequestsCount,
     recentRequests: recentSessions.map(requestSummary),
     supportAvailable: needsAvailability ? Boolean(availableAgent) : null,
     profile,

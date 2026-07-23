@@ -10,7 +10,6 @@ import type { CustomerProfile } from "@/lib/customer-profile-data";
 import type { CustomerPortalInitialData } from "@/lib/customer-portal-data";
 import type { CustomerSectionKey } from "@/lib/customer-portal-sections";
 import type { PolicyDocumentKey } from "@/lib/policy-documents";
-import CustomerPortalShell from "./CustomerPortalShell";
 import CustomerPortalHero from "./CustomerPortalHero";
 import CustomerQuickActions from "./CustomerQuickActions";
 import CustomerOverviewCards from "./CustomerOverviewCards";
@@ -96,16 +95,9 @@ export default function CustomerPortalHome({
   }
 
   const displayName = profile?.displayName || initialData.displayName;
-  const profileImageUrl = profile?.profileImageUrl ?? initialData.profileImageUrl;
 
   return (
-    <CustomerPortalShell
-      userName={displayName}
-      userImage={profileImageUrl}
-      activeSection={activeSection}
-      badges={{ requests: openRequestsCount || undefined }}
-    >
-      <div key={activeSection} className="support-section-in">
+    <div key={activeSection} className="support-section-in">
       {activeSection === "overview" && (
         <div className="space-y-6">
           <CustomerPortalHero
@@ -202,7 +194,6 @@ export default function CustomerPortalHome({
       )}
 
       {activeSection === "contact" && <CustomerContactSection />}
-      </div>
-    </CustomerPortalShell>
+    </div>
   );
 }

@@ -60,3 +60,15 @@ export const CUSTOMER_SECTION_HREFS: Record<CustomerSectionKey, string> = {
 export function isCustomerSectionKey(value: string | null | undefined): value is CustomerSectionKey {
   return !!value && CUSTOMER_NAV_ITEMS.some((item) => item.key === value);
 }
+
+// Lets the persistent portal shell (rendered once in layout.tsx) figure out
+// which nav item is active from the URL alone, instead of every page having
+// to pass activeSection down as a prop.
+export function pathnameToSection(pathname: string): CustomerSectionKey {
+  if (pathname === "/portal") return "overview";
+
+  const match = Object.entries(CUSTOMER_SECTION_HREFS).find(
+    ([key, href]) => key !== "overview" && (pathname === href || pathname.startsWith(`${href}/`)),
+  );
+  return (match?.[0] as CustomerSectionKey | undefined) ?? "overview";
+}
