@@ -7,6 +7,7 @@ import { getToken } from "next-auth/jwt";
  *
  * /app requires any authenticated session.
  * /support/agent requires an authenticated session AND a staff role (non-staff -> /portal).
+ * /admin requires an authenticated session AND the ADMINISTRATOR role (anyone else -> /unauthorized).
  * /portal (customer portal) requires any authenticated session; staff -> /support/agent.
  * /support (legacy customer route) bounces everyone to their real home (/support/agent or /portal).
  * Public pages (/, /login, /unauthorized) remain accessible without a session.
@@ -34,7 +35,11 @@ export async function proxy(request: NextRequest) {
 
   const isStaff = STAFF_ROLES.has(token.role as string);
 
-  if (pathname.startsWith("/support/agent")) {
+  if (pathname.startsWith("/admin")) {
+    if (token.role !== "ADMINISTRATOR") {
+      return NextResponse.redirect(new URL("/unauthorized", request.url));
+    }
+  } else if (pathname.startsWith("/support/agent")) {
     if (!isStaff) {
       return NextResponse.redirect(new URL("/portal", request.url));
     }
@@ -50,5 +55,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/app/:path*", "/support/:path*", "/portal/:path*"],
+  matcher: ["/app/:path*", "/support/:path*", "/portal/:path*", "/admin/:path*"],
 };

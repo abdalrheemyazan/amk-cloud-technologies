@@ -30,7 +30,7 @@ export class GeminiNotConfiguredError extends Error {
   }
 }
 
-function getGeminiClient() {
+export function getGeminiClient() {
   const apiKey = process.env.GEMINI_API_KEY?.trim();
   if (!apiKey) {
     if (process.env.NODE_ENV === "development") {

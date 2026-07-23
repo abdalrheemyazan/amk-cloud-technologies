@@ -27,6 +27,15 @@ import {
   type SupportAttachmentView,
 } from "@/lib/support-attachments";
 import { removeSupportAttachmentObjects } from "@/lib/support-attachment-storage";
+import { embedText } from "@/lib/ai/embeddings";
+import { matchKnowledgeChunks } from "@/lib/knowledge/vector-search";
+
+const CUSTOMER_KNOWLEDGE_AUDIENCE = "CUSTOMER_VISIBLE";
+// Calibrated against this project's real content: genuine semantic matches on
+// the seeded AMK knowledge articles score ~0.67-0.72, while off-topic queries
+// (e.g. "what's the weather today?") top out around ~0.58. 0.65 keeps clear
+// separation from the off-topic ceiling without filtering out real matches.
+const MIN_CHUNK_SIMILARITY = 0.65;
 
 const AI_STATUS = "AI_CHAT";
 const AI_SENDER_ID = "gemini-amk-support";
@@ -111,7 +120,10 @@ function searchTerms(message: string, category: string | null) {
   );
 }
 
-async function loadSafeKnowledge(message: string, category: string | null) {
+// Legacy keyword search over KnowledgeArticle — kept only as a fallback for
+// when semantic search finds nothing (e.g. embeddings API hiccup, or content
+// that hasn't been synced into the vector index yet). Not the primary path.
+async function keywordFallbackSearch(message: string, category: string | null) {
   const terms = searchTerms(message, category);
   const categoryFilter = category
     ? [{ category: { contains: category.slice(0, 80), mode: "insensitive" as const } }]
@@ -164,6 +176,50 @@ async function loadSafeKnowledge(message: string, category: string | null) {
     .join("\n\n---\n\n");
 
   return { hasMatch: articles.length > 0, text };
+}
+
+// Primary grounding path: embed the customer's question and search the
+// pgvector index by meaning, not exact words. Only chunks above the
+// similarity threshold are used — anything weaker is treated as no match at
+// all, same as if nothing had been found.
+async function semanticSearchKnowledge(message: string) {
+  const queryEmbedding = await embedText(message, "RETRIEVAL_QUERY");
+  const chunks = await matchKnowledgeChunks({
+    queryEmbedding,
+    audience: CUSTOMER_KNOWLEDGE_AUDIENCE,
+    limit: 5,
+    minSimilarity: MIN_CHUNK_SIMILARITY,
+  });
+
+  if (chunks.length === 0) return { hasMatch: false, text: "" };
+
+  const text = chunks
+    .map((chunk, index) =>
+      [
+        `Source ${index + 1}:`,
+        `Document: ${chunk.title ?? "AMK Knowledge Base"}`,
+        chunk.pageNumber ? `Page: ${chunk.pageNumber}` : null,
+        `Content:\n${chunk.content}`,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    )
+    .join("\n---\n");
+
+  return { hasMatch: true, text };
+}
+
+async function retrieveKnowledgeContext(message: string, category: string | null) {
+  try {
+    const semantic = await semanticSearchKnowledge(message);
+    if (semantic.hasMatch) return semantic;
+  } catch (error) {
+    if (process.env.NODE_ENV === "development") {
+      console.error("Semantic knowledge search failed, falling back to keyword search:", error);
+    }
+  }
+
+  return keywordFallbackSearch(message, category);
 }
 
 async function saveUserMessage({
@@ -339,7 +395,7 @@ export async function sendCustomerChatMessage(
       // touch the knowledge base or Gemini — they're answered locally and instantly.
       replyText = cannedReply;
     } else {
-      const knowledge = await loadSafeKnowledge(persistedMessage, selectedCategory);
+      const knowledge = await retrieveKnowledgeContext(persistedMessage, selectedCategory);
       if (!knowledge.hasMatch) {
         // No relevant AMK knowledge base article matched — never let Gemini
         // fall back to general knowledge, just return the fixed fallback.

@@ -164,6 +164,52 @@ model KnowledgeArticle {
   updatedAt             DateTime @updatedAt
 }
 
+// A knowledge source for semantic (embedding-based) search: either an admin-uploaded
+// file (sourceType "UPLOAD") or a mirror of a KnowledgeArticle row kept in sync so
+// existing article content is searchable the same way (sourceType "ARTICLE").
+model KnowledgeDocument {
+  id              String    @id @default(cuid())
+  title           String
+  fileName        String
+  storagePath     String?
+  mimeType        String
+  sizeBytes       Int
+  audience        String    @default("CUSTOMER_VISIBLE") // CUSTOMER_VISIBLE, SUPPORT_INTERNAL, TECHNICIAN_ONLY
+  category        String?
+  sourceType      String    @default("UPLOAD") // UPLOAD, ARTICLE
+  sourceArticleId String? // set when sourceType = ARTICLE; app-level reference only, not a DB FK
+  status          String    @default("UPLOADED") // UPLOADED, PROCESSING, READY, FAILED
+  errorMessage    String?   @db.Text
+  chunkCount      Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  processedAt     DateTime?
+
+  chunks          KnowledgeChunk[]
+
+  @@index([status])
+  @@index([sourceArticleId])
+}
+
+model KnowledgeChunk {
+  id         String            @id @default(cuid())
+  documentId String
+  document   KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  chunkIndex Int
+  pageNumber Int?
+  title      String?
+  category   String?
+  audience   String            @default("CUSTOMER_VISIBLE")
+  content    String            @db.Text
+  // pgvector column — managed outside Prisma's type system; see prisma/enable-pgvector.ts
+  // for the extension + column DDL and src/lib/knowledge/vector-search.ts for raw SQL access.
+  embedding  Unsupported("vector(768)")?
+  createdAt  DateTime          @default(now())
+
+  @@index([documentId])
+  @@index([audience])
+}
+
 model MonitoringAlert {
   id        String   @id @default(cuid())
   source    String
