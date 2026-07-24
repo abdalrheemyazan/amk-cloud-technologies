@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getCustomerProfileById, type CustomerProfile } from "@/lib/customer-profile-data";
 import type { CustomerSectionKey } from "@/lib/customer-portal-sections";
 import type { MyRequestSummary } from "@/lib/actions/support-chat-actions";
+import { devPerfReset, devPerfSummary } from "@/lib/dev-perf";
 
 export type CustomerPortalInitialData = {
   displayName: string | null;
@@ -69,6 +70,9 @@ export async function loadCustomerPortalData(
   activeSection: CustomerSectionKey,
 ): Promise<CustomerPortalInitialData> {
   const startedAt = performance.now();
+  // Reset here (not inside getPortalShellData) so the count below covers every
+  // query this navigation issues, including the shell query when it isn't cached yet.
+  devPerfReset();
   const needsRequests = activeSection === "overview" || activeSection === "requests";
   const needsAvailability = activeSection === "overview" || activeSection === "chat";
   const needsFullProfile = activeSection === "settings";
@@ -101,7 +105,11 @@ export async function loadCustomerPortalData(
   ]);
 
   if (process.env.NODE_ENV === "development") {
-    console.info(`[perf] portal:${activeSection} ${Math.round(performance.now() - startedAt)}ms`);
+    const summary = devPerfSummary();
+    console.info(
+      `[perf] portal:${activeSection} data ${Math.round(performance.now() - startedAt)}ms | queries: ${summary?.count ?? 0}` +
+        (summary?.slowest ? ` | slowest: ${summary.slowest.durationMs}ms "${summary.slowest.query}"` : ""),
+    );
   }
 
   return {

@@ -1,12 +1,21 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { Menu, X } from "lucide-react";
 import CustomerPortalBrand from "./CustomerPortalBrand";
 import CustomerPortalSidebarContent from "./CustomerPortalSidebarContent";
 import { pathnameToSection, type CustomerSectionKey } from "@/lib/customer-portal-sections";
+
+// Module-level (not per-instance) so it survives across mounts and can tell
+// a genuine remount apart from React StrictMode's double-invoke in dev.
+// Next.js app router runs Strict Mode by default in dev (since 13.5.1), which
+// mounts every component twice on its very first appearance (mount -> cleanup
+// -> mount) purely to surface effect bugs — that's mounts #1 and #2 below and
+// is expected noise, not a remount. Only mount #3+ indicates the shell was
+// actually torn down and rebuilt by a later /portal/* navigation.
+let shellMountCount = 0;
 
 export default function CustomerPortalShell({
   userName,
@@ -22,6 +31,30 @@ export default function CustomerPortalShell({
   const pathname = usePathname();
   const activeSection = pathnameToSection(pathname);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const previousPathname = useRef(pathname);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "development") return;
+    shellMountCount += 1;
+    if (shellMountCount > 2) {
+      console.warn(
+        `[perf] CustomerPortalShell remounted (mount #${shellMountCount}) at "${pathname}" — layout should keep it mounted across /portal/* navigation.`,
+      );
+    } else {
+      console.info(`[perf] CustomerPortalShell mounted at "${pathname}" (mount #${shellMountCount}, Strict Mode double-invoke expected here)`);
+    }
+    // No cleanup log on unmount by design: an unmount immediately followed by
+    // a remount on navigation is exactly the bug this is meant to catch, and
+    // the mount-count warning above already reports it.
+  }, []);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "development") return;
+    if (previousPathname.current !== pathname) {
+      console.info(`[perf] CustomerPortalShell navigated ${previousPathname.current} -> ${pathname} (shell stayed mounted)`);
+      previousPathname.current = pathname;
+    }
+  }, [pathname]);
 
   function handleNavigate() {
     setMobileNavOpen(false);

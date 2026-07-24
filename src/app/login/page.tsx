@@ -60,12 +60,18 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
 
+    const isDev = process.env.NODE_ENV === "development";
+    const submitStartedAt = isDev ? performance.now() : 0;
+
     try {
       const res = await signIn("credentials", {
         email,
         password,
         redirect: false,
       });
+      if (isDev) {
+        console.info(`[perf] login:signIn ${Math.round(performance.now() - submitStartedAt)}ms`);
+      }
 
       if (res?.error) {
         if (res.error.includes("PENDING_APPROVAL")) {
@@ -80,8 +86,18 @@ export default function LoginPage() {
           setError("אירעה שגיאה זמנית בהתחברות. נסו שוב בעוד רגע.");
         }
       } else {
+        const sessionStartedAt = isDev ? performance.now() : 0;
         const session = await getSession();
+        if (isDev) {
+          console.info(`[perf] login:getSession ${Math.round(performance.now() - sessionStartedAt)}ms`);
+        }
+        const redirectStartedAt = isDev ? performance.now() : 0;
         router.push(getPostLoginRedirect(session?.user?.role));
+        if (isDev) {
+          console.info(
+            `[perf] login:redirect-dispatch ${Math.round(performance.now() - redirectStartedAt)}ms | total-since-submit ${Math.round(performance.now() - submitStartedAt)}ms`,
+          );
+        }
       }
     } catch (err) {
       setError("אירעה שגיאה בתהליך ההתחברות.");

@@ -1,16 +1,19 @@
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import pg from "pg";
+import { devPerfRecordQuery } from "./dev-perf";
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
 };
 
+const isDev = process.env.NODE_ENV === "development";
+
 const createPrismaClient = () => {
   try {
     let connectionString = process.env.DATABASE_URL || "";
     connectionString = connectionString.replace(/[\?&]sslmode=[^&]+/g, "");
-    
+
     // In serverless, limit pool size to 1-2 per instance to avoid EMAXCONNSESSION
     const pool = new pg.Pool({
       connectionString,
@@ -23,10 +26,26 @@ const createPrismaClient = () => {
       connectionTimeoutMillis: 10000,
     });
     const adapter = new PrismaPg(pool);
-    return new PrismaClient({
+    const client = new PrismaClient({
       adapter,
-      log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
+      log: isDev ? ["error", "warn"] : ["error"],
     });
+    if (!isDev) {
+      return client;
+    }
+    // $on('query') doesn't reliably fire through the driver-adapter client in
+    // Prisma 7, so the per-request query count / slowest-query summary used by
+    // the [perf] logs is collected via a client extension instead.
+    return client.$extends({
+      query: {
+        $allOperations: async ({ model, operation, args, query }) => {
+          const startedAt = performance.now();
+          const result = await query(args);
+          devPerfRecordQuery(`${model ?? "raw"}.${operation}`, performance.now() - startedAt);
+          return result;
+        },
+      },
+    }) as unknown as PrismaClient;
   } catch (error: any) {
     if (error?.message?.includes("engine type \"client\" requires")) {
       return {} as PrismaClient;
