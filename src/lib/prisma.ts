@@ -46,8 +46,8 @@ const createPrismaClient = () => {
         },
       },
     }) as unknown as PrismaClient;
-  } catch (error: any) {
-    if (error?.message?.includes("engine type \"client\" requires")) {
+  } catch (error: unknown) {
+    if (error instanceof Error && error.message.includes("engine type \"client\" requires")) {
       return {} as PrismaClient;
     }
     throw error;

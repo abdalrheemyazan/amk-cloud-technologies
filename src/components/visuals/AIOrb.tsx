@@ -1,8 +1,8 @@
 "use client";
 
 import { Canvas, useFrame } from "@react-three/fiber";
-import { Sphere, MeshDistortMaterial, Float, MeshWobbleMaterial, Stars } from "@react-three/drei";
-import { useRef, useMemo } from "react";
+import { Sphere, MeshDistortMaterial, Float, MeshWobbleMaterial } from "@react-three/drei";
+import { useRef } from "react";
 import * as THREE from "three";
 
 function IntelligenceCore({ isThinking }: { isThinking: boolean }) {

@@ -46,7 +46,7 @@ export default function CustomerPortalShell({
     // No cleanup log on unmount by design: an unmount immediately followed by
     // a remount on navigation is exactly the bug this is meant to catch, and
     // the mount-count warning above already reports it.
-  }, []);
+  }, [pathname]);
 
   useEffect(() => {
     if (process.env.NODE_ENV !== "development") return;

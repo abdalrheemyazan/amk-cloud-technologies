@@ -6,7 +6,7 @@ import type { CustomerSectionKey } from "@/lib/customer-portal-sections";
 import { isPolicyDocumentKey, type PolicyDocumentKey } from "@/lib/policy-documents";
 import type { ChatSeed } from "./CustomerSupportChatPanel";
 import CustomerPortalHome from "./CustomerPortalHome";
-import { devLog } from "@/lib/dev-perf";
+import { devTimed } from "@/lib/dev-perf";
 
 function firstString(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -19,7 +19,6 @@ export default async function CustomerPortalRoute({
   activeSection: CustomerSectionKey;
   query?: Record<string, string | string[] | undefined>;
 }) {
-  const routeStartedAt = performance.now();
   const session = await getPortalSession();
 
   if (!session?.user) {
@@ -30,7 +29,7 @@ export default async function CustomerPortalRoute({
     redirect("/support/agent");
   }
 
-  const initialData = await loadCustomerPortalData(session.user.id as string, activeSection);
+  const initialData = await devTimed(`route:${activeSection} total`, () => loadCustomerPortalData(session.user.id as string, activeSection));
 
   let initialChatSeed: ChatSeed | null = null;
   if (activeSection === "chat") {
@@ -49,8 +48,6 @@ export default async function CustomerPortalRoute({
     const policyParam = firstString(query.policy)?.trim();
     if (isPolicyDocumentKey(policyParam)) initialPolicyKey = policyParam;
   }
-
-  devLog(`route:${activeSection} total ${Math.round(performance.now() - routeStartedAt)}ms`);
 
   return (
     <CustomerPortalHome

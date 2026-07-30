@@ -28,7 +28,6 @@ import {
   sendAgentMessage,
   setAgentStatus,
   type ActiveChat,
-  type AgentMetrics,
   type ChatMessageView,
   type PendingChatRequest,
 } from "@/lib/actions/support-chat-actions";
@@ -41,6 +40,10 @@ import {
   type SupportTransferView,
 } from "@/lib/actions/support-team-actions";
 import { getSupportWorkspaceSnapshot } from "@/lib/actions/support-workspace-actions";
+import {
+  getSupportDashboardData,
+  type SupportDashboardData,
+} from "@/lib/actions/support-dashboard-actions";
 
 const ActiveChatWindow = dynamic(() => import("./ActiveChatWindow"));
 const SupportCasePanel = dynamic(() => import("./SupportCasePanel"));
@@ -49,7 +52,7 @@ const InternalTeamChat = dynamic(() => import("./InternalTeamChat"));
 const TransferIssueDialog = dynamic(() => import("./TransferIssueDialog"));
 const CustomersInTreatmentSection = dynamic(() => import("./CustomersInTreatmentSection"));
 const CannedRepliesSection = dynamic(() => import("./CannedRepliesSection"));
-const QuickSolutionsRefSection = dynamic(() => import("./QuickSolutionsRefSection"));
+const AiAssistantPanel = dynamic(() => import("./AiAssistantPanel"));
 const TechnicalToolsSection = dynamic(() => import("./TechnicalToolsSection"));
 const SessionNotesSection = dynamic(() => import("./SessionNotesSection"));
 const SessionHistorySection = dynamic(() => import("./SessionHistorySection"));
@@ -72,10 +75,13 @@ export default function TeamSupportAgentWorkspace({
   const [pending, setPending] = useState<PendingChatRequest[]>([]);
   const [active, setActive] = useState<ActiveChat[]>([]);
   const [agents, setAgents] = useState<ConnectedSupportAgent[]>([]);
-  const [metrics, setMetrics] = useState<AgentMetrics | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [queueNotice, setQueueNotice] = useState<string | null>(null);
+
+  const [dashboardData, setDashboardData] = useState<SupportDashboardData | null>(null);
+  const [dashboardLoaded, setDashboardLoaded] = useState(false);
+  const [dashboardError, setDashboardError] = useState<string | null>(null);
 
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [closedChat, setClosedChat] = useState<ActiveChat | null>(null);
@@ -87,6 +93,7 @@ export default function TeamSupportAgentWorkspace({
   const [selectedTeamAgent, setSelectedTeamAgent] = useState<ConnectedSupportAgent | null>(null);
   const [transferChat, setTransferChat] = useState<ActiveChat | null>(null);
   const [transferTargetId, setTransferTargetId] = useState<string | null>(null);
+  const [aiPanelOpen, setAiPanelOpen] = useState(false);
 
   const refreshAll = useCallback(async () => {
     const result = await getSupportWorkspaceSnapshot();
@@ -94,11 +101,21 @@ export default function TeamSupportAgentWorkspace({
       setStatus(result.data.status);
       setPending(result.data.pending);
       setActive(result.data.active);
-      setMetrics(result.data.metrics);
       setAgents(result.data.agents);
     }
     setLoaded(true);
     setLastUpdated(new Date());
+  }, []);
+
+  const refreshDashboard = useCallback(async () => {
+    const result = await getSupportDashboardData();
+    if (result.ok) {
+      setDashboardData(result.data);
+      setDashboardError(null);
+    } else if (result.error !== "UNAUTHORIZED") {
+      setDashboardError(result.error);
+    }
+    setDashboardLoaded(true);
   }, []);
 
   useEffect(() => {
@@ -111,6 +128,22 @@ export default function TeamSupportAgentWorkspace({
       window.clearInterval(interval);
     };
   }, [refreshAll]);
+
+  // The heavier dashboard aggregates are only fetched while the dashboard is on
+  // screen, so other sections stay light.
+  useEffect(() => {
+    if (activeSection !== "dashboard") return;
+    let cancelled = false;
+    const run = () => {
+      if (!cancelled) void refreshDashboard();
+    };
+    run();
+    const interval = window.setInterval(run, POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [activeSection, refreshDashboard]);
 
   useEffect(() => {
     if (!selectedChatId) return;
@@ -176,12 +209,22 @@ export default function TeamSupportAgentWorkspace({
     const result = await rejectChatRequest(id);
     if (!result.ok) setQueueNotice(result.error);
     await refreshAll();
+    if (activeSection === "dashboard") void refreshDashboard();
   }
 
   function handleOpenChat(id: string) {
     setClosedChat(null);
     setSelectedChatId(id);
     setActiveSection("active-chats");
+  }
+
+  // The AI assistant only ever drafts text — it copies into the composer for the
+  // agent to review and send manually. It never sends on its own.
+  function handleCopyToReply(text: string) {
+    setMessageInput(text);
+    setAiPanelOpen(false);
+    setActiveSection("active-chats");
+    setQueueNotice("הטיוטה הועתקה לתיבת התגובה. בדוק/י ושלח/י ידנית.");
   }
 
   async function handleSendMessage(attachments?: PendingAttachment[]) {
@@ -296,10 +339,12 @@ export default function TeamSupportAgentWorkspace({
       <SupportCommandHeader
         agentName={displayName}
         lastUpdated={lastUpdated}
-        metrics={metrics}
         status={status}
         onStatusChange={handleStatusChange}
-        onRefresh={refreshAll}
+        onRefresh={async () => {
+          await refreshAll();
+          if (activeSection === "dashboard") await refreshDashboard();
+        }}
       />
 
       <AnimatedSection key={activeSection} className="space-y-6">
@@ -312,10 +357,12 @@ export default function TeamSupportAgentWorkspace({
         {activeSection === "dashboard" && (
           <TeamDashboardOverview
             pending={pending}
-            active={active}
             agents={agents}
-            loaded={loaded}
             notice={queueNotice}
+            data={dashboardData}
+            dashboardLoaded={dashboardLoaded}
+            dashboardError={dashboardError}
+            onRetry={refreshDashboard}
             onNavigate={setActiveSection}
             onAccept={handleAccept}
             onReject={handleReject}
@@ -397,6 +444,7 @@ export default function TeamSupportAgentWorkspace({
             onTransfer={() => openTransfer()}
             onResolve={handleResolveChat}
             onEnd={() => handleCloseChat()}
+            onAnalyze={() => setAiPanelOpen(true)}
           />
           </div>
         )}
@@ -407,7 +455,15 @@ export default function TeamSupportAgentWorkspace({
         {activeSection === "canned-replies" && (
           <CannedRepliesSection agentName={displayName} profile={profile} />
         )}
-        {activeSection === "quick-solutions" && <QuickSolutionsRefSection />}
+        {activeSection === "quick-solutions" && (
+          <div className="mx-auto h-[calc(100vh-220px)] min-h-[520px] max-w-3xl">
+            <AiAssistantPanel
+              sessionId={selectedChatId}
+              sessionLabel={selectedChat?.customerName ?? null}
+              onCopyToReply={handleCopyToReply}
+            />
+          </div>
+        )}
         {activeSection === "technical-tools" && <TechnicalToolsSection />}
         {activeSection === "treatment-notes" && <SessionNotesSection initialSessionId={selectedChatId} />}
         {activeSection === "history" && <SessionHistorySection />}
@@ -426,6 +482,36 @@ export default function TeamSupportAgentWorkspace({
         customerName={selectedChat?.customerName}
         onClose={() => setSelectedTeamAgent(null)}
       />
+
+      {aiPanelOpen && (
+        <div className="fixed inset-0 z-50 flex" role="dialog" aria-modal="true" aria-label="עוזר AI טכני">
+          <button
+            type="button"
+            aria-label="סגירת עוזר ה-AI"
+            onClick={() => setAiPanelOpen(false)}
+            className="flex-1 bg-slate-900/30 backdrop-blur-sm"
+          />
+          <div className="flex h-full w-full max-w-[440px] flex-col bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
+              <span className="text-[11px] font-black text-slate-500">ניתוח פנייה בעזרת AI</span>
+              <button
+                type="button"
+                onClick={() => setAiPanelOpen(false)}
+                className="rounded-lg px-2 py-1 text-[11px] font-bold text-slate-500 outline-none hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-500"
+              >
+                סגירה
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 p-2">
+              <AiAssistantPanel
+                sessionId={selectedChatId}
+                sessionLabel={selectedChat?.customerName ?? null}
+                onCopyToReply={handleCopyToReply}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {transferChat && (
         <TransferIssueDialog

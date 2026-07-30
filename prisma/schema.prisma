@@ -218,6 +218,13 @@ model MonitoringAlert {
   timestamp DateTime @default(now())
 }
 
+enum SupportPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
 model SupportSession {
   id               String                    @id @default(cuid())
   status           String                    @default("PENDING") // PENDING, ACTIVE, COMPLETED, CLOSED, REJECTED, EXPIRED
@@ -228,6 +235,11 @@ model SupportSession {
   category         String?
   subject          String?
   summary          String?
+  // Auto-classified on the server at submission from the request content/impact
+  // (never from customer urgency wording). Nullable so existing rows stay valid;
+  // code treats missing as MEDIUM. Staff may override; reason is internal-only.
+  priority         SupportPriority?
+  priorityReason   String?                   @db.Text
   acceptedAt       DateTime?
   closedAt         DateTime?
   expiresAt        DateTime?

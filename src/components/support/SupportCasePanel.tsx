@@ -2,6 +2,7 @@
 
 import {
   ArrowLeftRight,
+  Bot,
   CheckCircle2,
   Clock3,
   FileText,
@@ -35,6 +36,7 @@ export default function SupportCasePanel({
   onTransfer,
   onResolve,
   onEnd,
+  onAnalyze,
 }: {
   chat: ActiveChat | null;
   activity: SupportActivityView[];
@@ -43,6 +45,7 @@ export default function SupportCasePanel({
   onTransfer: () => void;
   onResolve: () => void;
   onEnd: () => void;
+  onAnalyze: () => void;
 }) {
   if (!chat) {
     return (
@@ -71,6 +74,15 @@ export default function SupportCasePanel({
       </div>
 
       <div className="flex-1 space-y-5 overflow-y-auto p-4">
+        <button
+          type="button"
+          onClick={onAnalyze}
+          className="flex w-full items-center justify-center gap-2 rounded-[14px] bg-gradient-to-l from-blue-600 to-indigo-600 px-3 py-2.5 text-xs font-black text-white outline-none transition-all hover:from-blue-500 hover:to-indigo-500 focus-visible:ring-2 focus-visible:ring-blue-500"
+        >
+          <Bot className="h-4 w-4" aria-hidden="true" />
+          ניתוח בעזרת AI
+        </button>
+
         <div className="grid grid-cols-2 gap-2">
           <button
             type="button"

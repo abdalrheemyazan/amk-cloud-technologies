@@ -212,7 +212,6 @@ export default function CustomerSupportChatPanel({
       title,
       description,
       relatedService: selectedCategory?.label,
-      urgency: "MEDIUM",
       attachments: attachmentsToSend,
     });
     setTransferring(false);

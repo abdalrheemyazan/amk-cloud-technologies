@@ -3,7 +3,8 @@
 import { randomUUID } from "node:crypto";
 import { getServerSession } from "next-auth";
 import { revalidatePath } from "next/cache";
-import { Role } from "@prisma/client";
+import { Role, type SupportPriority } from "@prisma/client";
+import { classifyRequestPriority } from "@/lib/support/classify-request-priority";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { STAFF_ROLES } from "@/lib/roles";
@@ -23,7 +24,6 @@ import {
   type SupportAttachmentView,
 } from "@/lib/support-attachments";
 import { removeSupportAttachmentObjects } from "@/lib/support-attachment-storage";
-import { URGENCY_LABELS, type RequestUrgency } from "@/lib/support-request-options";
 
 const GENERIC_ERROR = "לא ניתן לטעון את הנתונים כרגע. נסה שוב בעוד מספר רגעים.";
 const UPLOAD_ERROR = "לא ניתן להעלות את התמונה כרגע. נסה שוב בעוד מספר רגעים.";
@@ -272,7 +272,6 @@ export type SupportRequestInput = {
   title: string;
   description: string;
   relatedService?: string;
-  urgency: RequestUrgency;
   os?: string;
   browser?: string;
   device?: string;
@@ -303,7 +302,6 @@ export async function submitSupportRequest(
     const expiresAt = new Date(now.getTime() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000);
 
     const detailLines = [
-      `רמת דחיפות: ${URGENCY_LABELS[input.urgency]}`,
       input.os?.trim() && `מערכת הפעלה: ${input.os.trim()}`,
       input.browser?.trim() && `דפדפן: ${input.browser.trim()}`,
       input.device?.trim() && `מכשיר: ${input.device.trim()}`,
@@ -313,6 +311,29 @@ export async function submitSupportRequest(
     const composedMessage = [description, detailLines].filter(Boolean).join("\n\n");
     const relatedService = input.relatedService?.trim().slice(0, 80) || null;
 
+    // Server-side automatic priority classification from the request content and
+    // impact (never from customer urgency wording). Deterministic and synchronous
+    // — it never blocks or fails submission; MEDIUM is the safe fallback.
+    let priority: SupportPriority = "MEDIUM";
+    let priorityReason: string | null = null;
+    try {
+      const classification = classifyRequestPriority({
+        title,
+        description,
+        category: relatedService,
+        os: input.os,
+        browser: input.browser,
+        device: input.device,
+        attachmentsCount: validated.attachments.length,
+      });
+      priority = classification.priority;
+      priorityReason = `סווג אוטומטית (${Math.round(classification.confidence * 100)}%): ${classification.reasons.join("; ")}`.slice(0, 1000);
+    } catch (classifyError) {
+      if (process.env.NODE_ENV === "development") {
+        console.error("priority classification failed, defaulting to MEDIUM:", classifyError);
+      }
+    }
+
     const chatSession = await prisma.supportSession.create({
       data: {
         customerId: user.id,
@@ -320,6 +341,8 @@ export async function submitSupportRequest(
         category: relatedService,
         subject: title,
         summary: description.slice(0, 2000),
+        priority,
+        priorityReason,
         expiresAt,
         publicActivities: {
           create: {
@@ -659,6 +682,158 @@ export async function getPendingRequests(): Promise<ActionResult<PendingChatRequ
     };
   } catch (error) {
     console.error("getPendingRequests failed:", error);
+    return { ok: false, error: GENERIC_ERROR };
+  }
+}
+
+export type PendingRequestAttachment = {
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+};
+
+export type PendingRequestMessage = {
+  isFromCustomer: boolean;
+  message: string;
+  createdAt: string;
+};
+
+export type PendingRequestDetails = {
+  id: string;
+  subject: string | null;
+  summary: string | null;
+  customerName: string | null;
+  customerEmail: string | null;
+  category: string | null;
+  status: string;
+  priority: SupportPriority | null;
+  priorityReason: string | null;
+  createdAt: string;
+  recentMessages: PendingRequestMessage[];
+  attachments: PendingRequestAttachment[];
+};
+
+// Full — but still lightweight — details for a single pending request, fetched
+// only when an agent opens the details view. Read-only: it never changes
+// ownership or status. Attachments are metadata only (no content). Restricted
+// to still-pending, unassigned requests so viewing can't leak someone else's
+// active conversation.
+export async function getPendingRequestDetails(
+  sessionId: string,
+): Promise<ActionResult<PendingRequestDetails>> {
+  const user = await requireStaffUser();
+  if (!user) return { ok: false, error: "UNAUTHORIZED" };
+  if (!sessionId || sessionId.length > 100) return { ok: false, error: "NOT_FOUND" };
+
+  try {
+    const s = await prisma.supportSession.findFirst({
+      where: { id: sessionId, status: "PENDING", technicianId: null },
+      select: {
+        id: true,
+        subject: true,
+        summary: true,
+        category: true,
+        status: true,
+        priority: true,
+        priorityReason: true,
+        createdAt: true,
+        customer: { select: { name: true, email: true } },
+        messages: {
+          where: { deletedAt: null },
+          orderBy: { createdAt: "desc" },
+          take: 8,
+          select: {
+            senderRole: true,
+            message: true,
+            createdAt: true,
+            files: {
+              where: { expiresAt: { gt: new Date() } },
+              select: { fileName: true, fileType: true, fileSize: true },
+            },
+          },
+        },
+      },
+    });
+    if (!s) return { ok: false, error: "NOT_FOUND" };
+
+    const messages = s.messages.slice().reverse();
+
+    return {
+      ok: true,
+      data: {
+        id: s.id,
+        subject: s.subject,
+        summary: s.summary,
+        customerName: s.customer?.name ?? null,
+        customerEmail: s.customer?.email ?? null,
+        category: s.category,
+        status: s.status,
+        priority: s.priority ?? null,
+        priorityReason: s.priorityReason ?? null,
+        createdAt: s.createdAt.toISOString(),
+        recentMessages: messages.map((m) => ({
+          isFromCustomer: m.senderRole === "CUSTOMER",
+          message: m.message,
+          createdAt: m.createdAt.toISOString(),
+        })),
+        attachments: messages.flatMap((m) =>
+          m.files.map((f) => ({ fileName: f.fileName, fileType: f.fileType, fileSize: f.fileSize })),
+        ),
+      },
+    };
+  } catch (error) {
+    console.error("getPendingRequestDetails failed:", error);
+    return { ok: false, error: GENERIC_ERROR };
+  }
+}
+
+const SUPPORT_PRIORITIES: SupportPriority[] = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
+
+// Staff-only manual override of a request's priority. The customer can never
+// change priority after submission; only staff who can access the request may.
+// The change is recorded in the existing AuditLog.
+export async function overrideSupportRequestPriority(
+  sessionId: string,
+  priority: SupportPriority,
+): Promise<ActionResult> {
+  const user = await requireStaffUser();
+  if (!user) return { ok: false, error: "UNAUTHORIZED" };
+  if (!SUPPORT_PRIORITIES.includes(priority)) return { ok: false, error: GENERIC_ERROR };
+
+  try {
+    const s = await prisma.supportSession.findUnique({
+      where: { id: sessionId },
+      select: { id: true, technicianId: true, priority: true },
+    });
+    if (!s) return { ok: false, error: "NOT_FOUND" };
+
+    const canManage =
+      s.technicianId === user.id ||
+      s.technicianId === null ||
+      user.role === "ADMINISTRATOR" ||
+      user.role === "TEAM_LEADER";
+    if (!canManage) return { ok: false, error: "UNAUTHORIZED" };
+
+    await prisma.supportSession.update({
+      where: { id: sessionId },
+      data: {
+        priority,
+        priorityReason: `שונה ידנית על ידי נציג (${s.priority ?? "לא סווג"} → ${priority})`,
+      },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        action: "SUPPORT_PRIORITY_OVERRIDE",
+        details: `session=${sessionId}; ${s.priority ?? "—"} -> ${priority}`,
+      },
+    });
+
+    revalidatePath("/support/agent");
+    return { ok: true };
+  } catch (error) {
+    console.error("overrideSupportRequestPriority failed:", error);
     return { ok: false, error: GENERIC_ERROR };
   }
 }

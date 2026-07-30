@@ -1,6 +1,6 @@
 "use client";
 
-import { Cloud, Server, Database, Activity, Shield, Cpu } from "lucide-react";
+import { Cloud, Database, Activity, Shield } from "lucide-react";
 import { motion } from "framer-motion";
 
 export default function HeroVisual() {

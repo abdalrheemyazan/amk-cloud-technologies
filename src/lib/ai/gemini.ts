@@ -47,10 +47,12 @@ export async function generateGeminiText({
   contents,
   systemInstruction = AMK_SUPPORT_SYSTEM_INSTRUCTION,
   timeoutMs = DEFAULT_TIMEOUT_MS,
+  maxOutputTokens = 700,
 }: {
   contents: Content[];
   systemInstruction?: string;
   timeoutMs?: number;
+  maxOutputTokens?: number;
 }) {
   const abortController = new AbortController();
   const timeout = setTimeout(() => abortController.abort(), timeoutMs);
@@ -62,7 +64,7 @@ export async function generateGeminiText({
       config: {
         abortSignal: abortController.signal,
         systemInstruction,
-        maxOutputTokens: 700,
+        maxOutputTokens,
       },
     });
     const text = response.text?.trim();

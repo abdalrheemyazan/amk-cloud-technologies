@@ -1,8 +1,8 @@
 import {
+  Bot,
   History,
   Inbox,
   LayoutDashboard,
-  Lightbulb,
   MessageSquare,
   MessageSquareText,
   StickyNote,
@@ -22,7 +22,7 @@ export const TEAM_AGENT_NAV_ITEMS: Array<{
   { key: "active-chats", label: "שיחות פעילות", icon: MessageSquare },
   { key: "customers-in-treatment", label: "לקוחות בטיפול", icon: Users },
   { key: "canned-replies", label: "תגובות מוכנות", icon: MessageSquareText },
-  { key: "quick-solutions", label: "פתרונות מהירים", icon: Lightbulb },
+  { key: "quick-solutions", label: "עוזר AI טכני", icon: Bot },
   { key: "technical-tools", label: "כלים טכניים", icon: Wrench },
   { key: "treatment-notes", label: "הערות טיפול", icon: StickyNote },
   { key: "history", label: "היסטוריית שיחות", icon: History },

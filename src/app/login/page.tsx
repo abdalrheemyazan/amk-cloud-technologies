@@ -11,7 +11,6 @@ import {
   Loader2,
   Eye,
   EyeOff,
-  Shield,
   CheckCircle2,
   ArrowRight
 } from "lucide-react";
@@ -99,7 +98,7 @@ export default function LoginPage() {
           );
         }
       }
-    } catch (err) {
+    } catch (_err) {
       setError("אירעה שגיאה בתהליך ההתחברות.");
     } finally {
       setLoading(false);
@@ -111,7 +110,7 @@ export default function LoginPage() {
     setError("");
     try {
       await signIn("google", { callbackUrl: "/dashboard" });
-    } catch (err) {
+    } catch (_err) {
       setError("אירעה שגיאה בחיבור לחשבון Google.");
       setGoogleLoading(false);
     }
@@ -127,7 +126,7 @@ export default function LoginPage() {
       // Simulate real API dispatch for reset email
       await new Promise((resolve) => setTimeout(resolve, 1500));
       setResetSuccess(true);
-    } catch (err) {
+    } catch (_error) {
       setResetError("אירעה שגיאה בשליחת קישור האיפוס.");
     } finally {
       setResetLoading(false);
@@ -174,7 +173,7 @@ export default function LoginPage() {
       } else {
         setRegError(data.error || "אירעה שגיאה בעיבוד בקשת ההצטרפות.");
       }
-    } catch (error) {
+    } catch (_error) {
       // Graceful offline fallback simulation
       setRegSuccess(true);
     } finally {

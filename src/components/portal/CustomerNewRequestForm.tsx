@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { AlertCircle, CheckCircle2, ImagePlus, ListChecks, Send, ShieldCheck } from "lucide-react";
 import { submitSupportRequest } from "@/lib/actions/support-chat-actions";
-import { RELATED_SERVICE_OPTIONS, URGENCY_OPTIONS, type RequestUrgency } from "@/lib/support-request-options";
+import { RELATED_SERVICE_OPTIONS } from "@/lib/support-request-options";
 import { processSelectedFiles, type PendingAttachment } from "@/lib/chat-attachments-client";
 import PendingAttachmentTray from "@/components/support/PendingAttachmentTray";
 import CustomerPortalPageShell from "./CustomerPortalPageShell";
@@ -12,7 +12,6 @@ export default function CustomerNewRequestForm({ onSubmitted }: { onSubmitted: (
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [relatedService, setRelatedService] = useState("");
-  const [urgency, setUrgency] = useState<RequestUrgency>("MEDIUM");
   const [os, setOs] = useState("");
   const [browser, setBrowser] = useState("");
   const [device, setDevice] = useState("");
@@ -50,7 +49,6 @@ export default function CustomerNewRequestForm({ onSubmitted }: { onSubmitted: (
       title,
       description,
       relatedService: relatedService || undefined,
-      urgency,
       os: os || undefined,
       browser: browser || undefined,
       device: device || undefined,
@@ -65,13 +63,12 @@ export default function CustomerNewRequestForm({ onSubmitted }: { onSubmitted: (
 
     setSuccess(
       result.data.agentAvailable
-        ? "הפנייה נשלחה בהצלחה. נציג תמיכה יצטרף לשיחה בקרוב."
-        : "הפנייה נשלחה בהצלחה. אין נציג זמין כרגע, אך נחזור אליך בהקדם."
+        ? "הפנייה התקבלה ותסווג אוטומטית לפי תוכן התקלה והשפעתה. נציג תמיכה יצטרף לשיחה בקרוב."
+        : "הפנייה התקבלה ותסווג אוטומטית לפי תוכן התקלה והשפעתה. אין נציג זמין כרגע, אך נחזור אליך בהקדם."
     );
     setTitle("");
     setDescription("");
     setRelatedService("");
-    setUrgency("MEDIUM");
     setOs("");
     setBrowser("");
     setDevice("");
@@ -132,46 +129,26 @@ export default function CustomerNewRequestForm({ onSubmitted }: { onSubmitted: (
           />
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div>
-            <label htmlFor="request-service" className="mb-1.5 block text-xs font-black text-[#0F172A]">
-              שירות קשור
-            </label>
-            <select
-              id="request-service"
-              value={relatedService}
-              onChange={(e) => setRelatedService(e.target.value)}
-              className="h-11 w-full rounded-xl border border-[#E2E8F0] bg-[#F4F7FB] px-3.5 text-sm font-semibold text-[#0F172A] outline-none transition-colors focus:border-blue-500 focus:bg-white"
-            >
-              <option value="">לא ידוע / כללי</option>
-              {RELATED_SERVICE_OPTIONS.map((service) => (
-                <option key={service} value={service}>
-                  {service}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="mb-1.5 block text-xs font-black text-[#0F172A]">רמת דחיפות</label>
-            <div className="grid grid-cols-3 gap-1.5 rounded-xl border border-[#E2E8F0] bg-[#F4F7FB] p-1.5">
-              {URGENCY_OPTIONS.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  aria-pressed={urgency === option.value}
-                  onClick={() => setUrgency(option.value)}
-                  className={`rounded-lg py-1.5 text-xs font-black transition-colors ${
-                    urgency === option.value
-                      ? "bg-white text-blue-700 shadow-sm"
-                      : "text-[#64748B] hover:text-[#0F172A]"
-                  }`}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          </div>
+        <div>
+          <label htmlFor="request-service" className="mb-1.5 block text-xs font-black text-[#0F172A]">
+            שירות קשור
+          </label>
+          <select
+            id="request-service"
+            value={relatedService}
+            onChange={(e) => setRelatedService(e.target.value)}
+            className="h-11 w-full rounded-xl border border-[#E2E8F0] bg-[#F4F7FB] px-3.5 text-sm font-semibold text-[#0F172A] outline-none transition-colors focus:border-blue-500 focus:bg-white"
+          >
+            <option value="">לא ידוע / כללי</option>
+            {RELATED_SERVICE_OPTIONS.map((service) => (
+              <option key={service} value={service}>
+                {service}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1.5 text-[11px] font-semibold leading-relaxed text-[#94A3B8]">
+            אין צורך לבחור רמת דחיפות — הפנייה תסווג אוטומטית לפי תוכן התקלה והשפעתה.
+          </p>
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">

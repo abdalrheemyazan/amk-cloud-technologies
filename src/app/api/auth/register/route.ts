@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json({ success: true, userId: newUser.id }, { status: 201 });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Registration error:", error);
     return NextResponse.json(
       { error: "אירעה שגיאה בעיבוד בקשת ההצטרפות. נא לנסות שוב מאוחר יותר." },

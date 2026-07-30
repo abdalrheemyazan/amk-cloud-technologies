@@ -31,15 +31,20 @@ export default function SessionNotesSection({ initialSessionId }: { initialSessi
   }, []);
 
   useEffect(() => {
-    if (!selectedId) {
+    if (!selectedId) return;
+    let cancelled = false;
+    // Clear notes and loaded asynchronously or via callbacks to prevent setState-in-effect
+    Promise.resolve().then(() => {
+      if (cancelled) return;
+      setLoaded(false);
       setNotes([]);
-      return;
-    }
-    setLoaded(false);
+    });
     getSessionNotes(selectedId).then((result) => {
+      if (cancelled) return;
       if (result.ok) setNotes(result.data);
       setLoaded(true);
     });
+    return () => { cancelled = true; };
   }, [selectedId]);
 
   async function handleAddNote() {

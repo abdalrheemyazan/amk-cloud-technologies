@@ -97,7 +97,7 @@ function SmoothRevealText({ text }: { text: string }) {
   );
 }
 
-function StatWrapper({ icon: Icon, label, children }: any) {
+function StatWrapper({ icon: Icon, label, children }: { icon: React.ComponentType<{ className?: string }>, label: string, children: React.ReactNode }) {
   return (
     <div className="flex flex-col md:flex-row items-center gap-4 px-8 py-6 md:py-0 border-b md:border-b-0 md:border-r md:first:border-r-0 border-slate-100/80 last:border-0 w-full md:w-auto justify-center md:flex-1 group">
       <div className="text-center md:text-right w-full">
@@ -113,7 +113,7 @@ function StatWrapper({ icon: Icon, label, children }: any) {
   );
 }
 
-function MainServiceCard({ icon: Icon, title, desc, onClick }: any) {
+function MainServiceCard({ icon: Icon, title, desc, onClick }: { icon: React.ComponentType<{ className?: string }>, title: string, desc: string, onClick: () => void }) {
   return (
     <div 
       onClick={onClick} 
@@ -139,7 +139,7 @@ function MainServiceCard({ icon: Icon, title, desc, onClick }: any) {
   );
 }
 
-function ServicePill({ icon: Icon, title, onClick }: any) {
+function ServicePill({ icon: Icon, title, onClick }: { icon: React.ComponentType<{ className?: string }>, title: string, onClick: () => void }) {
   return (
     <div 
       onClick={onClick} 
@@ -151,7 +151,15 @@ function ServicePill({ icon: Icon, title, onClick }: any) {
   );
 }
 
-const servicesData: Record<string, any> = {
+type ServiceDetail = {
+  title: string;
+  icon: React.ComponentType<{ className?: string }>;
+  desc: string;
+  fullDesc: string;
+  bullets: string[];
+};
+
+const servicesData: Record<string, ServiceDetail> = {
   "vps": {
     title: "שרתי VPS וירטואליים",
     icon: Server,
@@ -210,7 +218,7 @@ const servicesData: Record<string, any> = {
   }
 };
 
-function ServiceModal({ activeModal, onClose, onSelectService }: any) {
+function ServiceModal({ activeModal, onClose, onSelectService }: { activeModal: string | null, onClose: () => void, onSelectService: (val: string | null) => void }) {
   if (!activeModal) return null;
 
   const isAll = activeModal === "all";
@@ -1006,7 +1014,7 @@ export default function LandingPage() {
               </div>
               <h3 className="text-lg font-black text-slate-900 mb-1">{review.name}</h3>
               <p className="text-xs font-bold text-slate-400 mb-4">{review.role}</p>
-              <p className="text-slate-600 text-sm font-semibold leading-relaxed flex-1">"{review.body}"</p>
+              <p className="text-slate-600 text-sm font-semibold leading-relaxed flex-1">&quot;{review.body}&quot;</p>
               
               <div className="flex gap-1 mt-6 text-[#fbbf24] drop-shadow-sm group-hover:scale-105 transition-transform duration-300">
                 {[...Array(5)].map((_, index) => (

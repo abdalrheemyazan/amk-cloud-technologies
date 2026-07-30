@@ -36,11 +36,17 @@ export async function matchKnowledgeChunks({
   minSimilarity = 0.65,
 }: {
   queryEmbedding: number[];
-  audience: string;
+  /**
+   * A single audience (e.g. the customer chatbot's "CUSTOMER_VISIBLE") or a set
+   * of audiences (e.g. the internal support assistant reading customer +
+   * internal knowledge). A single string keeps the original equality behaviour.
+   */
+  audience: string | string[];
   limit?: number;
   minSimilarity?: number;
 }): Promise<MatchedKnowledgeChunk[]> {
   const literal = toVectorLiteral(queryEmbedding);
+  const audiences = Array.isArray(audience) ? audience : [audience];
 
   // Cosine distance (`<=>`) ranges 0 (identical) to 2 (opposite); similarity = 1 - distance.
   const rows = await prisma.$queryRaw<
@@ -57,7 +63,7 @@ export async function matchKnowledgeChunks({
     SELECT id, "documentId", content, title, "pageNumber", audience,
            1 - (embedding <=> ${literal}::vector) AS similarity
     FROM "KnowledgeChunk"
-    WHERE audience = ${audience} AND embedding IS NOT NULL
+    WHERE audience = ANY(${audiences}::text[]) AND embedding IS NOT NULL
     ORDER BY embedding <=> ${literal}::vector
     LIMIT ${limit}
   `);
