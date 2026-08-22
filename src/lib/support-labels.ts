@@ -1,19 +1,33 @@
 export const STATUS_LABELS: Record<string, string> = {
+  NEW: "חדש",
   OPEN: "חדש",
-  IN_PROGRESS: "בטיפול",
-  WAITING_CUSTOMER: "ממתינה ללקוח",
-  RESOLVED: "הושלם",
-  CLOSED: "נסגר",
-  CANCELLED: "בוטל",
+  PENDING: "ממתין לנציג",
+  IN_PROGRESS: "בטיפול פעיל",
+  ACTIVE: "בטיפול פעיל",
+  WAITING_FOR_CUSTOMER: "ממתין לתשובת לקוח",
+  WAITING_CUSTOMER: "ממתין לתשובת לקוח",
+  WAITING_INTERNAL: "ממתין לבדיקה פנימית",
+  RESOLVED: "נפתרה (לאישור לקוח)",
+  CLOSED: "סגורה",
+  CANCELLED: "בוטלה",
+  REJECTED: "נדחתה",
+  EXPIRED: "פגה תוקף",
 };
 
 export const STATUS_STYLES: Record<string, string> = {
-  OPEN: "bg-blue-50 text-blue-700 border-blue-100",
-  IN_PROGRESS: "bg-amber-50 text-amber-700 border-amber-100",
-  WAITING_CUSTOMER: "bg-slate-100 text-slate-600 border-slate-200",
-  RESOLVED: "bg-emerald-50 text-emerald-700 border-emerald-100",
+  NEW: "bg-blue-50 text-blue-700 border-blue-200",
+  OPEN: "bg-blue-50 text-blue-700 border-blue-200",
+  PENDING: "bg-amber-50 text-amber-700 border-amber-200",
+  IN_PROGRESS: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  ACTIVE: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  WAITING_FOR_CUSTOMER: "bg-purple-50 text-purple-700 border-purple-200",
+  WAITING_CUSTOMER: "bg-purple-50 text-purple-700 border-purple-200",
+  WAITING_INTERNAL: "bg-sky-50 text-sky-700 border-sky-200",
+  RESOLVED: "bg-indigo-50 text-indigo-700 border-indigo-200",
   CLOSED: "bg-slate-100 text-slate-500 border-slate-200",
-  CANCELLED: "bg-red-50 text-red-600 border-red-100",
+  CANCELLED: "bg-rose-50 text-rose-600 border-rose-200",
+  REJECTED: "bg-rose-50 text-rose-600 border-rose-200",
+  EXPIRED: "bg-slate-100 text-slate-500 border-slate-200",
 };
 
 export const PRIORITY_LABELS: Record<string, string> = {

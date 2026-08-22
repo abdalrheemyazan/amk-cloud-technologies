@@ -12,10 +12,13 @@ import {
 } from "@/lib/ai/gemini";
 import {
   buildIntentReply,
-  buildNoKnowledgeMatchAnswer,
   classifyChatIntent,
   detectMessageLanguage,
 } from "@/lib/ai/chat-intent";
+import {
+  matchFastKnowledgeIntent,
+  getCustomerFacingKnowledgeSummary,
+} from "@/lib/knowledge/public-knowledge-loader";
 import {
   discardStagedSupportAttachments,
   stageSupportAttachments,
@@ -354,7 +357,7 @@ export async function sendCustomerChatMessage(
           status: AI_STATUS,
           isAiOnly: true,
           category,
-          subject: "שיחה עם העוזר החכם של AMK",
+          subject: generateConversationTitle(persistedMessage, category),
           summary: persistedMessage.slice(0, 1000),
           expiresAt: expiresAt(),
         },
@@ -380,45 +383,139 @@ export async function sendCustomerChatMessage(
       userId: customer.id,
     });
 
+function maskSensitiveData(text: string): string {
+  return text
+    .replace(/(?:bearer\s+)[a-zA-Z0-9_\-\.]{20,}/gi, "Bearer [MASKED_TOKEN]")
+    .replace(/(?:api[_-]?key[:=]\s*)[a-zA-Z0-9_\-]{16,}/gi, "api_key=[MASKED_KEY]")
+    .replace(/(?:password[:=]\s*)[^\s]{4,}/gi, "password=[MASKED_PASSWORD]")
+    .replace(/\b[A-Za-z0-9-_=]+\.[A-Za-z0-9-_=]+\.?[A-Za-z0-9-_.+/=]*\b/g, (match) => {
+      if (match.length > 40 && match.includes(".")) return "[MASKED_JWT]";
+      return match;
+    });
+}
+
+function generateConversationTitle(message: string, category?: string | null): string {
+  const norm = message.toLowerCase();
+  if (norm.includes("vpn")) return "בעיית חיבור VPN";
+  if (norm.includes("vps") || norm.includes("שרת")) return "תקלה בשרת VPS";
+  if (norm.includes("דואר") || norm.includes("אימייל") || norm.includes("outlook")) return "בעיה בדואר אלקטרוני";
+  if (norm.includes("שעות") || norm.includes("טלפון") || norm.includes("קשר")) return "בירור שעות פעילות וקשר";
+  if (norm.includes("גיבוי") || norm.includes("backup")) return "שחזור וגיבוי נתונים";
+  if (norm.includes("אבטחה") || norm.includes("security")) return "אבטחת מידע וגישה";
+  if (category) return `פנייה בנושא ${category}`;
+  const clean = message.trim().slice(0, 35);
+  return clean ? `${clean}...` : "שיחת תמיכה עם העוזר";
+}
+
     const selectedCategory = category || conversation.category;
     const language = detectMessageLanguage(message || persistedMessage);
-    // Attachments alone (no text) always mean a real support need — never
-    // classify those as small talk just because there's no message to scan.
+
     const intent = validatedAttachments.attachments.length > 0 && !message
-      ? "AMK_SUPPORT_QUESTION"
+      ? "GENERAL_SUPPORT_QUESTION"
       : classifyChatIntent(message);
+
     const cannedReply = buildIntentReply(intent, language);
 
     let replyText: string;
-    if (cannedReply) {
-      // Greeting / thanks / capabilities / off-topic / sensitive-info intents never
-      // touch the knowledge base or Gemini — they're answered locally and instantly.
-      replyText = cannedReply;
-    } else {
-      const knowledge = await retrieveKnowledgeContext(persistedMessage, selectedCategory);
-      if (!knowledge.hasMatch) {
-        // No relevant AMK knowledge base article matched — never let Gemini
-        // fall back to general knowledge, just return the fixed fallback.
-        replyText = buildNoKnowledgeMatchAnswer(language);
+    let responseSource = "canned";
+    let ragMatchCount = 0;
+
+    // 1. Dynamic database queries (never static)
+    if (intent === "TICKET_STATUS") {
+      responseSource = "database_tickets";
+      const myTickets = await prisma.supportSession.findMany({
+        where: {
+          customerId: customer.id,
+          status: { in: ["PENDING", "ACTIVE", "IN_PROGRESS", "WAITING_FOR_CUSTOMER", "WAITING_CUSTOMER", "RESOLVED"] },
+          customerDeletedAt: null,
+        },
+        orderBy: { updatedAt: "desc" },
+        take: 5,
+        select: {
+          id: true,
+          subject: true,
+          category: true,
+          status: true,
+          updatedAt: true,
+        },
+      });
+
+      if (myTickets.length === 0) {
+        replyText =
+          language === "ar"
+            ? "لا توجد لديك طلبات مفتوحة حالياً. يمكنك فتح طلب جديد عبر زر 'פתיחת פנייה חדשה'."
+            : language === "en"
+            ? "You currently have no open support requests. You can open a new request using the 'New Request' button."
+            : "לא נמצאו פניות פתוחות בחשבונך כרגע. באפשרותך לפתוח פנייה חדשה בלחיצה על 'פתיחת פנייה חדשה'.";
       } else {
+        const lines = myTickets.map((t) => {
+          const displayId = `#REQ-${t.id.slice(-6).toUpperCase()}`;
+          const statusName =
+            t.status === "PENDING"
+              ? "ממתין לנציג"
+              : ["ACTIVE", "IN_PROGRESS"].includes(t.status)
+              ? "בטיפול פעיל"
+              : ["WAITING_FOR_CUSTOMER", "WAITING_CUSTOMER"].includes(t.status)
+              ? "ממתין לתשובתך"
+              : "נפתר";
+          return `• ${displayId} | ${t.subject || t.category || "פניית שירות"} (${statusName})`;
+        });
+        replyText =
+          language === "ar"
+            ? `إليك طلبات الدعم النشطة في حسابك:\n${lines.join("\n")}\n\nلعرض التفاصيل الكاملة والمراسلة، توجه إلى تبويب 'הפניות שלי'.`
+            : language === "en"
+            ? `Here are your active support requests in AMK:\n${lines.join("\n")}\n\nTo view full details or reply, navigate to 'My Requests'.`
+            : `הנה הפניות הפעילות שלך במערכת AMK:\n${lines.join("\n")}\n\nלצפייה בפרטים המלאים והתכתבות, היכנס ללשונית 'הפניות שלי'.`;
+      }
+    } else {
+      // 2. Check Fast Intents from canonical JSON Knowledge Base (bypasses Gemini)
+      const fastMatch = matchFastKnowledgeIntent(persistedMessage, language);
+
+      if (fastMatch.matched && fastMatch.answer) {
+        responseSource = "fast_intent_json";
+        replyText = fastMatch.answer;
+      } else if (cannedReply) {
+        // 3. Small talk & system actions (greetings, thanks, handoff trigger)
+        responseSource = "canned_intent";
+        replyText = cannedReply;
+      } else {
+        // 4. Free-form technical questions or complex inquiries -> Grounded RAG + Gemini
+        responseSource = "rag_gemini";
+        const sanitizedQuery = maskSensitiveData(persistedMessage);
+        const knowledge = await retrieveKnowledgeContext(sanitizedQuery, selectedCategory);
+        if (knowledge.hasMatch) ragMatchCount = 1;
+
         const attachmentMetadata = validatedAttachments.attachments.length
           ? validatedAttachments.attachments
               .map((attachment) => `${attachment.fileName} (${attachment.fileType}, ${attachment.fileSize} bytes)`)
               .join(", ")
           : "None";
+
+        const targetLangName = language === "ar" ? "Arabic" : language === "en" ? "English" : "Hebrew";
+        const publicKnowledgeSummary = getCustomerFacingKnowledgeSummary();
+
         const currentPrompt = [
-          `Customer selected category: ${selectedCategory || "Not selected"}`,
-          `Customer message: ${persistedMessage}`,
-          `Screenshot metadata (images are not provided to the model): ${attachmentMetadata}`,
-          `Relevant customer-facing knowledge base:\n${knowledge.text}`,
-          "Answer the customer directly and do not claim access to account-specific data.",
+          `Customer message (HIGHEST PRIORITY): "${sanitizedQuery}"`,
+          `Customer selected category: ${selectedCategory || "General / None"}`,
+          `Screenshot attachments metadata: ${attachmentMetadata}`,
+          `Canonical AMK Public Company Info:\n${publicKnowledgeSummary}`,
+          `Relevant Knowledge Base Articles:\n${
+            knowledge.hasMatch
+              ? knowledge.text
+              : "No specific article matched. Provide standard IT diagnostic questions, step-by-step guidance, and offer ticket creation / human agent handoff."
+          }`,
+          `Instruction: Respond directly to the customer in ${targetLangName}. Be professional, step-by-step, and concise. Never invent internal passwords or secrets.`,
         ].join("\n\n");
+
         const contents: Content[] = [
-          ...previousMessages.reverse().map((entry) => ({
-            role: entry.senderRole === "CUSTOMER" ? "user" : "model",
-            parts: [{ text: entry.message.slice(0, MAX_MESSAGE_LENGTH) }],
-          })),
-          { role: "user", parts: [{ text: currentPrompt }] },
+          ...previousMessages
+            .slice(-4)
+            .reverse()
+            .map((entry) => ({
+              role: entry.senderRole === "CUSTOMER" ? ("user" as const) : ("model" as const),
+              parts: [{ text: maskSensitiveData(entry.message).slice(0, MAX_MESSAGE_LENGTH) }],
+            })),
+          { role: "user" as const, parts: [{ text: currentPrompt }] },
         ];
 
         try {
@@ -434,6 +531,12 @@ export async function sendCustomerChatMessage(
           };
         }
       }
+    }
+
+    if (process.env.NODE_ENV === "development") {
+      console.info(
+        `[customer-chat] conv=${conversation.id} intent=${intent} lang=${language} ragMatch=${ragMatchCount > 0} source=${responseSource}`
+      );
     }
 
     const assistantMessage = await prisma.sessionMessage.create({

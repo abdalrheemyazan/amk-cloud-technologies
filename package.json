@@ -8,7 +8,8 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
-    "db:seed": "prisma db seed"
+    "db:seed": "prisma db seed",
+    "cleanup:demo": "tsx scripts/cleanup-demo-data.ts"
   },
   "dependencies": {
     "@google/genai": "^2.13.0",

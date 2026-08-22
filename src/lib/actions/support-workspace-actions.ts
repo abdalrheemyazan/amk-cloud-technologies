@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { getServerSession } from "next-auth";
 import type { Role } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
@@ -25,7 +26,6 @@ export type SupportWorkspaceSnapshot = {
   agents: ConnectedSupportAgent[];
 };
 
-const GENERIC_ERROR = "לא ניתן לטעון את סביבת התמיכה כרגע. נסו שוב בעוד מספר רגעים.";
 const PRESENCE_WINDOW_MS = 2 * 60 * 1000;
 const SPECIALTY_BY_ROLE: Record<Role, string> = {
   CUSTOMER: "לקוח",
@@ -46,10 +46,6 @@ export async function getSupportWorkspaceSnapshot(): Promise<ActionResult<Suppor
 
   try {
     await cleanupExpiredSupportSessions();
-    await prisma.technicianPresence.updateMany({
-      where: { technicianId: userId },
-      data: { lastSeenAt: new Date() },
-    });
 
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
@@ -57,7 +53,16 @@ export async function getSupportWorkspaceSnapshot(): Promise<ActionResult<Suppor
 
     const [presence, pendingRows, activeRows, closedTodayCount, handledSessions, agentRows] =
       await Promise.all([
-        prisma.technicianPresence.findUnique({ where: { technicianId: userId } }),
+        prisma.technicianPresence.upsert({
+          where: { technicianId: userId },
+          update: { lastSeenAt: new Date() },
+          create: {
+            technicianId: userId,
+            status: "AVAILABLE",
+            mode: "AUTO",
+            lastSeenAt: new Date(),
+          },
+        }),
         prisma.supportSession.findMany({
           where: { technicianId: null, status: "PENDING" },
           orderBy: { createdAt: "asc" },
@@ -170,7 +175,11 @@ export async function getSupportWorkspaceSnapshot(): Promise<ActionResult<Suppor
       data: { status: normalizeAgentStatus(presence?.status), pending, active, metrics, agents },
     };
   } catch (error) {
-    if (process.env.NODE_ENV === "development") console.error("getSupportWorkspaceSnapshot failed:", error);
-    return { ok: false, error: GENERIC_ERROR };
+    const correlationId = randomUUID().slice(0, 8).toUpperCase();
+    console.error(`[ERR-${correlationId}] getSupportWorkspaceSnapshot failed:`, error);
+    return {
+      ok: false,
+      error: `לא הצלחנו לטעון את סביבת התמיכה (קוד: ERR-${correlationId}). נסו שוב בעוד מספר רגעים.`,
+    };
   }
 }

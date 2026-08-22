@@ -10,7 +10,6 @@ import {
   Clock3,
   ImagePlus,
   Languages,
-  MessageSquareText,
   RotateCcw,
   Save,
   ShieldCheck,
@@ -35,8 +34,6 @@ const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 
 const FIELD_CLASS =
   "h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 text-sm font-semibold text-slate-900 outline-none transition-[border,box-shadow,background] placeholder:text-slate-400 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500";
-const TEXTAREA_CLASS =
-  "w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm font-semibold leading-6 text-slate-900 outline-none transition-[border,box-shadow,background] placeholder:text-slate-400 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-100";
 
 type EditableProfile = Omit<
   SupportAgentProfileInput,
@@ -459,23 +456,6 @@ export default function PersonalAgentSettingsSection({
           </SettingsCard>
         </div>
       </div>
-
-      <SettingsCard icon={MessageSquareText} title="תגובות מוכנות אישיות" description="הטקסטים האלה זמינים ישירות מתוך חלון השיחה. המשתנה {agentName} מוחלף בשם התצוגה שלך.">
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <Field label="הודעת פתיחה אישית">
-            <textarea rows={4} maxLength={1000} value={form.openingMessage} onChange={(event) => setField("openingMessage", event.target.value)} className={TEXTAREA_CLASS} />
-          </Field>
-          <Field label="בקשת פרטים נוספים">
-            <textarea rows={4} maxLength={1000} value={form.detailsRequest} onChange={(event) => setField("detailsRequest", event.target.value)} className={TEXTAREA_CLASS} />
-          </Field>
-          <Field label="הודעת המתנה">
-            <textarea rows={4} maxLength={1000} value={form.waitingMessage} onChange={(event) => setField("waitingMessage", event.target.value)} className={TEXTAREA_CLASS} />
-          </Field>
-          <Field label="חתימת סיום שיחה">
-            <textarea rows={4} maxLength={1000} value={form.closingMessage} onChange={(event) => setField("closingMessage", event.target.value)} className={TEXTAREA_CLASS} />
-          </Field>
-        </div>
-      </SettingsCard>
 
       <div className="flex flex-col-reverse gap-3 rounded-[20px] border border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-400">

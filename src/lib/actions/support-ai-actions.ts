@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { getServerSession } from "next-auth";
 import type { Content } from "@google/genai";
 import type { Role } from "@prisma/client";
@@ -13,27 +14,28 @@ import { maskSecrets } from "@/lib/ai/mask-secrets";
 
 type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
-// Support agents may read customer-facing AND internal support knowledge; the
-// customer chatbot stays restricted to CUSTOMER_VISIBLE elsewhere.
-const SUPPORT_KNOWLEDGE_AUDIENCES = ["CUSTOMER_VISIBLE", "SUPPORT_INTERNAL", "TECHNICIAN_ONLY"];
-const MIN_CHUNK_SIMILARITY = 0.6;
+const MIN_CHUNK_SIMILARITY = 0.55;
 const KNOWLEDGE_LIMIT = 5;
-const MESSAGE_WINDOW = 14;
-const MAX_MESSAGE_CHARS = 800;
-const MAX_NOTE_CHARS = 400;
-const NOTE_WINDOW = 5;
+const MESSAGE_WINDOW = 25;
+const MAX_MESSAGE_CHARS = 1000;
+const MAX_NOTE_CHARS = 500;
+const NOTE_WINDOW = 10;
 const MAX_AGENT_INPUT = 2000;
 
 const NO_KNOWLEDGE_LINE = "לא נמצא מידע מספיק במאגר הידע הפנימי.";
-const GENERIC_ERROR = "לא ניתן להשלים את הניתוח כרגע. נסה שוב.";
-const MISSING_KEY_ERROR = "העוזר החכם אינו זמין כרגע.";
+const GENERIC_ERROR = "לא ניתן להשלים את הניתוח כרגע. נסו שוב בעוד מספר רגעים.";
+const MISSING_KEY_ERROR = "עוזר ה-AI אינו זמין כרגע. ניתן להמשיך בטיפול בפנייה באופן רגיל.";
 
 export type SupportAiAction =
   | "diagnose"
+  | "summary"
+  | "already_tried"
   | "checks"
   | "solution"
   | "reply"
-  | "summary"
+  | "followup_questions"
+  | "missing_info"
+  | "root_cause"
   | "custom";
 
 export type SupportAiSource = {
@@ -55,40 +57,42 @@ export type AnalyzeSupportRequestInput = {
   agentInput?: string;
 };
 
-const SYSTEM_INSTRUCTION = `אתה "עוזר AI טכני" פנימי של צוות התמיכה של AMK Cloud Technologies.
-אתה מסייע לנציג/ת התמיכה בלבד — לא ללקוח, ולא באופן אוטומטי.
+const SYSTEM_INSTRUCTION = `אתה "עוזר AI טכני" פנימי בכיר של צוות התמיכה וההנדסה של AMK Cloud Technologies.
+אתה מסייע לנציג/ת התמיכה ולטכנאים לנתח פניות, להבין היסטוריית שיחה, לזהות מה כבר נוסה, להציע בדיקות ופתרונות, ולנסח טיוטות תשובה.
 
-כללי ליבה:
-- ענה תמיד בעברית, בקצרה, בצורה מעשית ומקצועית.
-- אתה מציע צעדים בלבד. אינך מבצע פעולות ואינך שולח דבר ללקוח.
-- לעולם אל תטען שביצעת פעולה (הפעלה מחדש של שרת, פקודות מערכת, שינוי סיסמאות, חומת אש, פורטים, מחיקת מידע, סגירת/שיוך פנייה).
-- סדר את הצעדים מהבטוח ביותר להמשך ועד המסוכן.
-- לכל פעולה מסוכנת הוסף אזהרה ברורה בשורה נפרדת עם הקידומת "⚠️ אזהרה:".
-- בסס את התשובה על "ידע פנימי רלוונטי" שסופק בלבד. אל תמציא נהלים, מחירים או מדיניות של AMK.
-- אם אין ידע פנימי מספיק, כתוב בסעיף "מקורות" את המשפט: "${NO_KNOWLEDGE_LINE}".
-- אל תכלול הערות פנימיות בתוך "תגובה מוצעת ללקוח". התשובה ללקוח חייבת להיות מנוסחת, מנומסת ובלי מונחים פנימיים.
-- אל תבקש מהלקוח סיסמאות, טוקנים, מפתחות API או פרטי אשראי.
+כללי בטיחות ותפעול קריטיים:
+1. ענה תמיד בעברית מקצועית, מדויקת, תמציתית ומובנית.
+2. אתה כלי עזר מייעץ לנציג בלבד. אינך מבצע פעולות, אינך מפעיל שרתים מחדש, ואינך שולח הודעות ללקוח. הנציג האנושי בודק, עורך ומאשר.
+3. סדר את הצעדים תמיד מהבטוח ביותר ועד לצעדים מתקדמים/מסוכנים.
+4. לכל פעולה שעלולה לגרום לניתוק, אובדן מידע, שינוי אבטחה או השבתה – הוסף שורה בולטת: "⚠️ אזהרה: [תיאור הסיכון וההמלצה לגיבוי]".
+5. התבסס אך ורק על פרטי הפנייה ועל "ידע פנימי רלוונטי" שסופק. אל תמציא נהלים, מחירים או מדיניות של AMK שלא מופיעים במקורות.
+6. אם אין ידע פנימי מספיק במסמכים שצורפו, ציין במפורש בסעיף "מקורות": "${NO_KNOWLEDGE_LINE}".
+7. "תגובה מוצעת ללקוח": חייבת להיות מנוסחת בנימוס, בבהירות, ללא שימוש בז'רגון פנימי של הצוות וללא הנחות שווא. לעולם אל תבקש סיסמאות או מפתחות אבטחה.
 
-בכל תשובה החזר בדיוק את הסעיפים הבאים, כל אחד בשורה חדשה עם הכותרת המדויקת:
-סיכום התקלה
-אבחון אפשרי
-בדיקות מומלצות
-פתרון מוצע
-רמת סיכון
-שאלות נוספות ללקוח
-תגובה מוצעת ללקוח
-מקורות
-רמת ודאות
-
-תחת "מקורות" ציין את שמות מסמכי הידע שהתבססת עליהם, או את משפט חוסר הידע. תחת "רמת ודאות" כתוב: גבוהה / בינונית / נמוכה.`;
+בכל תשובה החזר את הסעיפים הרלוונטיים בצורה ברורה עם הכותרות הבאות (כל כותרת בשורה חדשה ומודגשת):
+**תקציר הפנייה**
+**אבחון אפשרי וסיבת שורש**
+**מה כבר נוסה ונבדק**
+**מידע חסר הדורש בירור**
+**בדיקות מומלצות**
+**פתרון מוצע**
+**רמת סיכון**
+**שאלות המשך ללקוח**
+**תגובה מוצעת ללקוח**
+**מקורות**
+**רמת ודאות** (גבוהה / בינונית / נמוכה)`;
 
 const ACTION_FOCUS: Record<SupportAiAction, string> = {
-  diagnose: "התמקד באבחון התקלה: מה הגורם הסביר ביותר ומדוע.",
-  checks: "התמקד בבדיקות המומלצות שהנציג יכול לבצע או לבקש מהלקוח, מהבטוח ביותר ועד המתקדם.",
-  solution: "התמקד בפתרון המוצע, שלב אחר שלב, תוך ציון סיכונים.",
-  reply: "התמקד בניסוח 'תגובה מוצעת ללקוח' — ברורה, אדיבה ומקצועית. שאר הסעיפים יכולים להיות תמציתיים.",
-  summary: "התמקד ב'סיכום התקלה' ובמצב הנוכחי של הטיפול. שאר הסעיפים תמציתיים.",
-  custom: "התייחס למידע/לשאלה שהנציג הוסיף, ועדכן את הניתוח בהתאם.",
+  diagnose: "נתח את התקלה לעומק: מהי התקלה, מה הגורם הסביר ביותר, ומה מידת ההשפעה.",
+  summary: "סכם את השיחה וההתקדמות עד כה בצורה מתומצתת וברורה עבור הנציג.",
+  already_tried: "סקור את ההיסטוריה ורשום במדויק מה כבר נוסה על ידי הלקוח או הנציג, מה עבד ומה נכשל.",
+  checks: "הצע רשימת בדיקות מומלצות ומדורגות שהנציג יכול לבצע או לבקש מהלקוח לבדוק.",
+  solution: "הצע פתרון מעשי שלב-אחר-שלב לפתרון התקלה, כולל אזהרות בטיחות והנחיות גיבוי.",
+  reply: "נסח טיוטת מענה מקצועית וברורה ללקוח בסעיף 'תגובה מוצעת ללקוח' שתעזור לקדם את הפתרון.",
+  followup_questions: "הצע 2-4 שאלות ממוקדות שיעזרו לנציג לקבל מידע חיוני מהלקוח להמשך האבחון.",
+  missing_info: "זהה איזה מידע טכני או לוגי חסר כרגע כדי לאבחן את הבעיה באופן חד-משמעי.",
+  root_cause: "הערך מהי סיבת השורש (Root Cause) הסבירה לתקלה על בסיס הסימפטומים ומאגר הידע.",
+  custom: "התייחס לשאלת הנציג או למידע הנוסף שסיפק, ועדכן את הניתוח הטכני בהתאם.",
 };
 
 async function requireStaff() {
@@ -99,10 +103,16 @@ async function requireStaff() {
 
 function senderLabel(role: string): string {
   if (role === "CUSTOMER") return "לקוח";
-  if (role === "SUPPORT_AGENT" || role === "TECHNICIAN" || role === "TEAM_LEADER" || role === "CLOUD_ENGINEER" || role === "ADMINISTRATOR") {
-    return "נציג";
+  if (
+    role === "SUPPORT_AGENT" ||
+    role === "TECHNICIAN" ||
+    role === "TEAM_LEADER" ||
+    role === "CLOUD_ENGINEER" ||
+    role === "ADMINISTRATOR"
+  ) {
+    return "נציג תמיכה";
   }
-  return "עוזר";
+  return "מערכת";
 }
 
 export async function analyzeSupportRequest(
@@ -111,7 +121,7 @@ export async function analyzeSupportRequest(
   const staff = await requireStaff();
   if (!staff) return { ok: false, error: "UNAUTHORIZED" };
 
-  const sessionId = typeof input.sessionId === "string" ? input.sessionId : "";
+  const sessionId = typeof input.sessionId === "string" ? input.sessionId.trim() : "";
   if (!sessionId || sessionId.length > 100) return { ok: false, error: "NOT_FOUND" };
 
   const action: SupportAiAction = input.action in ACTION_FOCUS ? input.action : "diagnose";
@@ -130,9 +140,20 @@ export async function analyzeSupportRequest(
         summary: true,
         technicianId: true,
         createdAt: true,
-        customer: { select: { name: true } },
+        updatedAt: true,
+        customer: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            companyName: true,
+            phone: true,
+            requestedService: true,
+            businessField: true,
+          },
+        },
         messages: {
-          orderBy: { createdAt: "desc" },
+          orderBy: { createdAt: "asc" },
           take: MESSAGE_WINDOW,
           where: { deletedAt: null },
           select: {
@@ -145,40 +166,80 @@ export async function analyzeSupportRequest(
         notes: {
           orderBy: { createdAt: "desc" },
           take: NOTE_WINDOW,
-          select: { content: true },
+          select: { content: true, createdAt: true },
+        },
+        transfers: {
+          orderBy: { createdAt: "desc" },
+          take: 3,
+          select: {
+            note: true,
+            fromAgent: { select: { name: true } },
+            toAgent: { select: { name: true } },
+          },
         },
       },
     });
 
     if (!session) return { ok: false, error: "NOT_FOUND" };
 
-    // Access: the owning agent, an unassigned/pending request, or a lead/admin.
     const canAccess =
       session.technicianId === staff.id ||
       session.technicianId === null ||
       staff.role === "ADMINISTRATOR" ||
-      staff.role === "TEAM_LEADER";
+      staff.role === "TEAM_LEADER" ||
+      staff.role === "CLOUD_ENGINEER" ||
+      staff.role === "TECHNICIAN";
+
     if (!canAccess) return { ok: false, error: "NOT_FOUND" };
 
     // ---- Build masked context ------------------------------------------
     const conversation = session.messages
-      .slice()
-      .reverse()
-      .map((m) => `${senderLabel(m.senderRole)}: ${maskSecrets(m.message).slice(0, MAX_MESSAGE_CHARS)}`)
+      .map((m) => {
+        const timeStr = m.createdAt.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" });
+        const text = maskSecrets(m.message).slice(0, MAX_MESSAGE_CHARS);
+        const filesStr = m.files.length > 0
+          ? ` [קבצים מצורפים: ${m.files.map((f) => f.fileName).join(", ")}]`
+          : "";
+        return `[${timeStr}] ${senderLabel(m.senderRole)}: ${text}${filesStr}`;
+      })
       .join("\n");
-
-    const attachmentMeta = session.messages
-      .flatMap((m) => m.files.map((f) => `${f.fileName} (${f.fileType}, ${f.fileSize} bytes)`))
-      .slice(0, 8)
-      .join(", ");
 
     const notes = session.notes
       .map((n) => `- ${maskSecrets(n.content).slice(0, MAX_NOTE_CHARS)}`)
       .join("\n");
 
-    // ---- Retrieve internal knowledge (masked query) --------------------
+    const transfers = session.transfers
+      .map(
+        (t) =>
+          `- הועבר מ-${t.fromAgent?.name || "נציג"} ל-${t.toAgent?.name || "נציג"}${t.note ? `: ${t.note}` : ""}`,
+      )
+      .join("\n");
+
+    const customerInfo = session.customer
+      ? [
+          session.customer.name ? `שם: ${session.customer.name}` : null,
+          session.customer.companyName ? `חברה: ${session.customer.companyName}` : null,
+          session.customer.requestedService ? `שירות מבוקש: ${session.customer.requestedService}` : null,
+          session.customer.businessField ? `תחום פעילות: ${session.customer.businessField}` : null,
+        ]
+          .filter(Boolean)
+          .join(" | ")
+      : "לקוח ללא פרטי פרופיל נוספים";
+
+    // ---- Knowledge Base Search with RBAC --------------------------------
+    const knowledgeAudiences =
+      staff.role === "SUPPORT_AGENT"
+        ? ["CUSTOMER_VISIBLE", "SUPPORT_INTERNAL"]
+        : ["CUSTOMER_VISIBLE", "SUPPORT_INTERNAL", "TECHNICIAN_ONLY"];
+
     const knowledgeQuery = maskSecrets(
-      [session.subject, session.category, session.summary, agentInput, session.messages.find((m) => m.senderRole === "CUSTOMER")?.message]
+      [
+        session.subject,
+        session.category,
+        session.summary,
+        agentInput,
+        session.messages.find((m) => m.senderRole === "CUSTOMER")?.message,
+      ]
         .filter(Boolean)
         .join(" ")
         .slice(0, 1500),
@@ -187,12 +248,13 @@ export async function analyzeSupportRequest(
     const sources: SupportAiSource[] = [];
     let knowledgeText = "";
     let hasKnowledge = false;
+
     try {
       if (knowledgeQuery.trim()) {
         const queryEmbedding = await embedText(knowledgeQuery, "RETRIEVAL_QUERY");
         const chunks = await matchKnowledgeChunks({
           queryEmbedding,
-          audience: SUPPORT_KNOWLEDGE_AUDIENCES,
+          audience: knowledgeAudiences,
           limit: KNOWLEDGE_LIMIT,
           minSimilarity: MIN_CHUNK_SIMILARITY,
         });
@@ -212,31 +274,35 @@ export async function analyzeSupportRequest(
           const key = `${title}#${chunk.pageNumber ?? ""}`;
           if (seen.has(key)) continue;
           seen.add(key);
-          sources.push({ title, pageNumber: chunk.pageNumber, similarity: Math.round(chunk.similarity * 100) / 100 });
+          sources.push({
+            title,
+            pageNumber: chunk.pageNumber,
+            similarity: Math.round(chunk.similarity * 100) / 100,
+          });
         }
       }
     } catch (error) {
       if (process.env.NODE_ENV === "development") {
         console.error("support AI knowledge retrieval failed:", error);
       }
-      // Continue without knowledge — the model is instructed to say so.
     }
 
-    // ---- Compose prompt -------------------------------------------------
+    // ---- Compose Prompt -------------------------------------------------
     const promptSections = [
-      `כותרת הפנייה: ${maskSecrets(session.subject) || "—"}`,
-      `שירות / תחום: ${session.category || "—"}`,
-      `סטטוס: ${session.status}`,
-      `תקציר: ${maskSecrets(session.summary) || "—"}`,
-      `לקוח: ${session.customer?.name || "—"}`,
-      attachmentMeta ? `קבצים מצורפים (מטא-דאטה בלבד): ${attachmentMeta}` : null,
-      conversation ? `שיחה אחרונה:\n${conversation}` : "שיחה אחרונה: אין הודעות.",
-      notes ? `הערות פנימיות של הנציג (לא לשילוב בתגובה ללקוח):\n${notes}` : null,
-      agentInput ? `מידע/שאלה שהנציג הוסיף:\n${agentInput}` : null,
+      `פרטי פנייה #${session.id.slice(-6).toUpperCase()}:`,
+      `כותרת / נושא: ${maskSecrets(session.subject) || "ללא כותרת"}`,
+      `שירות / קטגוריה: ${session.category || "תמיכה כללית"}`,
+      `סטטוס טיפול: ${session.status}`,
+      `תקציר ראשוני: ${maskSecrets(session.summary) || "אין תקציר"}`,
+      `פרטי לקוח: ${customerInfo}`,
+      transfers ? `היסטוריית העברות:\n${transfers}` : null,
+      notes ? `הערות פנימיות של הצוות:\n${notes}` : null,
+      conversation ? `תמליל השיחה המלא:\n${conversation}` : "אין הודעות בשיחה עדיין.",
+      agentInput ? `מידע או שאלה שהנציג הוסיף ידנית:\n${agentInput}` : null,
       hasKnowledge
-        ? `ידע פנימי רלוונטי:\n${knowledgeText}`
-        : `ידע פנימי רלוונטי: לא נמצא. כתוב בסעיף מקורות: "${NO_KNOWLEDGE_LINE}" ואל תמציא נהלים.`,
-      `מיקוד המשימה: ${ACTION_FOCUS[action]}`,
+        ? `ידע פנימי רלוונטי ממאגר הידע:\n${knowledgeText}`
+        : `ידע פנימי: לא נמצאו מסמכים תואמים. ציין בסעיף מקורות: "${NO_KNOWLEDGE_LINE}".`,
+      `מיקוד המשימה הנדרשת: ${ACTION_FOCUS[action]}`,
     ].filter(Boolean);
 
     const contents: Content[] = [{ role: "user", parts: [{ text: promptSections.join("\n\n") }] }];
@@ -246,22 +312,22 @@ export async function analyzeSupportRequest(
       text = await generateGeminiText({
         systemInstruction: SYSTEM_INSTRUCTION,
         contents,
-        maxOutputTokens: 1400,
+        maxOutputTokens: 1600,
         timeoutMs: 20_000,
       });
     } catch (error) {
-      if (process.env.NODE_ENV === "development" && !(error instanceof GeminiNotConfiguredError)) {
-        console.error("support AI generate failed:", error);
+      if (error instanceof GeminiNotConfiguredError) {
+        return { ok: false, error: MISSING_KEY_ERROR };
       }
-      return {
-        ok: false,
-        error: error instanceof GeminiNotConfiguredError ? MISSING_KEY_ERROR : GENERIC_ERROR,
-      };
+      const correlationId = randomUUID().slice(0, 8).toUpperCase();
+      console.error(`[ERR-${correlationId}] Support AI generation failed:`, error);
+      return { ok: false, error: `${GENERIC_ERROR} (קוד: ERR-${correlationId})` };
     }
 
     return { ok: true, data: { action, text, sources, hasKnowledge } };
   } catch (error) {
-    if (process.env.NODE_ENV === "development") console.error("analyzeSupportRequest failed:", error);
-    return { ok: false, error: GENERIC_ERROR };
+    const correlationId = randomUUID().slice(0, 8).toUpperCase();
+    console.error(`[ERR-${correlationId}] analyzeSupportRequest failed:`, error);
+    return { ok: false, error: `${GENERIC_ERROR} (קוד: ERR-${correlationId})` };
   }
 }

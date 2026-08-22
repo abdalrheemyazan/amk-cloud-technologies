@@ -1,0 +1,227 @@
+{
+  "meta": {
+    "name": "AMK Cloud Technologies LTD - Customer Public Knowledge Base",
+    "version": "1.1.0",
+    "last_updated": "2026-08-22",
+    "visibility": "CUSTOMER_VISIBLE",
+    "languages": [
+      "he",
+      "ar",
+      "en"
+    ],
+    "source_language": "he",
+    "purpose": "Canonical public customer-facing knowledge source for deterministic answers and RAG context.",
+    "security_rules": {
+      "never_include": [
+        "API keys",
+        "OAuth secrets",
+        "database credentials",
+        "passwords",
+        "tokens",
+        "internal staff notes",
+        "technician-only procedures",
+        "private infrastructure details",
+        "other customers' data"
+      ]
+    }
+  },
+  "company": {
+    "legal_name": "AMK Cloud Technologies LTD",
+    "brand_name": "AMK Cloud Technologies",
+    "description_he": "חברת AMK Cloud Technologies LTD מספקת שירותי ענן מתקדמים, שרתי VPS, אחסון אתרים, תשתיות וירטואליות, פתרונות אבטחת מידע, ניהול שרתים ושירותי DevOps. אנו מתאימים את הפתרון במדויק לצורכי הלקוח.",
+    "target_customers_he": "אנו מספקים פתרונות למגוון רחב של לקוחות: עסקים קטנים ובינוניים, חברות סטארט-אפ, מפתחי אתרים, נותני שירותי IT, וכן ללקוחות פרטיים הזקוקים לתשתיות ענן אמינות ויציבות.",
+    "advantages_he": "המטרה שלנו היא לספק שירותי ענן יציבים, מאובטחים וחסכוניים עם זמינות שרתים גבוהה מאוד (High Availability). בניגוד לספקים גדולים מחו\"ל, אנו מציעים תמיכה אישית, אבחון ותיקון תקלות מהיר, והתאמה אישית של שירותי האוטומציה והתשתיות בדיוק למידות של העסק שלך."
+  },
+  "contact": {
+    "support_hours": {
+      "days_he": "ראשון עד חמישי",
+      "from": "09:00",
+      "to": "17:00",
+      "answer_he": "שעות הפעילות שלנו הן מיום ראשון עד חמישי, בין השעות 09:00 ל-17:00."
+    },
+    "phone": {
+      "display": "077-990-9830",
+      "tel": "+972779909830",
+      "short_dial": "*8433",
+      "answer_he": "ניתן ליצור קשר עם מוקד התמיכה שלנו במספר הטלפון 077-990-9830 או בחיוג מקוצר *8433."
+    },
+    "support_request": {
+      "preferred_channel": "customer_portal",
+      "answer_he": "הדרך הטובה והמהירה ביותר לפתוח קריאת שירות היא דרך הפורטל האישי שלך באתר הרשמי שלנו. צוות התמיכה שלנו יטפל בה בהקדם."
+    }
+  },
+  "services": [
+    {
+      "id": "cloud",
+      "name_he": "שירותי ענן"
+    },
+    {
+      "id": "vps",
+      "name_he": "שרתי VPS"
+    },
+    {
+      "id": "web_hosting",
+      "name_he": "אחסון אתרים"
+    },
+    {
+      "id": "virtual_infrastructure",
+      "name_he": "תשתיות וירטואליות"
+    },
+    {
+      "id": "information_security",
+      "name_he": "פתרונות אבטחת מידע"
+    },
+    {
+      "id": "server_management",
+      "name_he": "ניהול שרתים"
+    },
+    {
+      "id": "devops",
+      "name_he": "שירותי DevOps"
+    }
+  ],
+  "security": {
+    "answer_he": "בהחלט. אנו פועלים תחת דרישות אבטחת מידע מחמירות ומציעים פתרונות מתקדמים הכוללים מערכות חומת אש (Firewall), ניהול הרשאות קפדני וניטור של הרשת 24/7 כדי להבטיח שהמידע שלך מוגן תמיד.",
+    "capabilities": [
+      "Firewall",
+      "ניהול הרשאות קפדני",
+      "ניטור רשת 24/7"
+    ],
+    "note": "24/7 refers to infrastructure/network monitoring. Customer support operating hours are Sunday-Thursday 09:00-17:00."
+  },
+  "troubleshooting": [
+    {
+      "id": "server_down",
+      "category_he": "זמינות שרת",
+      "example_questions_he": [
+        "השרת שלי למטה",
+        "האתר שלי לא עולה, מה עושים?"
+      ],
+      "answer_he": "אנו מבצעים ניטור ובקרה 24/7 לכלל התשתיות שלנו כדי לשמור על זמינות שרתים גבוהה. אם אתה חווה נפילה או איטיות, אנא פתח קריאה מיידית דרך הפורטל באתר או חייג למוקד שלנו (077-990-9830) כדי שמהנדסי הענן שלנו יאבחנו ויתקנו את התקלה."
+    },
+    {
+      "id": "backup_restore",
+      "category_he": "גיבויים ושחזור",
+      "example_questions_he": [
+        "מחקתי קובץ בטעות, האם יש לכם גיבוי?",
+        "איך משחזרים מידע?"
+      ],
+      "answer_he": "המערכות שלנו כוללות שירותי גיבוי ושחזור מידע שוטפים. במידה ואתה זקוק לשחזור נתונים או גיבוי מנקודת זמן מסוימת, אנא פתח קריאת שירות דרך הפורטל עם פרטי השרת והמידע החסר, ואנו נטפל בכך."
+    },
+    {
+      "id": "root_password_reset",
+      "category_he": "איפוס סיסמאות",
+      "example_questions_he": [
+        "איבדתי את סיסמת ה-Root ל-VPS שלי. איך אני מאפס אותה?"
+      ],
+      "answer_he": "מטעמי אבטחת מידע מחמירים, איפוס סיסמאות ניהול (Root/Admin) מתבצע באופן מאובטח. באפשרותך לגשת לפורטל הלקוחות באתר ולבצע איפוס, או לפתוח קריאת שירות לקבלת סיוע מנציג תמיכה."
+    },
+    {
+      "id": "resource_upgrade",
+      "category_he": "שדרוג משאבים",
+      "example_questions_he": [
+        "האם אוכל להגדיל את שטח האחסון או להוסיף RAM לשרת שלי בהמשך?"
+      ],
+      "answer_he": "הוספת משאבים היא אחד היתרונות הגדולים בענן שלנו. התשתיות שלנו מאפשרות גמישות מרבית. ניתן להרחיב ולהוסיף משאבים (כמו מעבדים, זיכרון או שטח אחסון) בקלות ובהתאם לגדילת העסק שלך. פתח קריאה בפורטל לביצוע השדרוג."
+    },
+    {
+      "id": "permissions_management",
+      "category_he": "ניהול הרשאות",
+      "example_questions_he": [
+        "אני רוצה להוסיף משתמש נוסף או טכנאי מטעמי לניהול השרת."
+      ],
+      "answer_he": "ניתן לנהל משתמשים והרשאות דרך ממשק הניהול בפורטל הלקוחות, כך שתוכל לתת גישה מדורגת (למשל לטכנאי ה-IT שלך או למנהל מערכות המידע בארגונך) מבלי לפגוע באבטחת המידע הכוללת."
+    }
+  ],
+  "fast_intents": [
+    {
+      "intent": "WORKING_HOURS",
+      "requires_ai": false,
+      "patterns_he": [
+        "מתי אתם עובדים",
+        "מה שעות הפעילות של התמיכה",
+        "שעות פעילות",
+        "עד איזה שעה אתם עובדים"
+      ],
+      "answer_ref": "contact.support_hours.answer_he"
+    },
+    {
+      "intent": "CONTACT_INFORMATION",
+      "requires_ai": false,
+      "patterns_he": [
+        "איך אפשר לדבר עם נציג",
+        "מה הטלפון שלכם",
+        "מספר טלפון",
+        "חיוג מקוצר"
+      ],
+      "answer_ref": "contact.phone.answer_he"
+    },
+    {
+      "intent": "CREATE_SUPPORT_REQUEST",
+      "requires_ai": false,
+      "patterns_he": [
+        "איך אני פותח קריאת שירות",
+        "איך מדווחים על תקלה",
+        "פתיחת פנייה",
+        "פתיחת תקלה"
+      ],
+      "answer_ref": "contact.support_request.answer_he"
+    },
+    {
+      "intent": "ABOUT_COMPANY",
+      "requires_ai": false,
+      "patterns_he": [
+        "מה חברת AMK Cloud עושה",
+        "מי אתם",
+        "אילו שירותים אתם מספקים"
+      ],
+      "answer_ref": "company.description_he"
+    },
+    {
+      "intent": "TARGET_CUSTOMERS",
+      "requires_ai": false,
+      "patterns_he": [
+        "למי השירותים שלכם מתאימים",
+        "מי הלקוחות שלכם"
+      ],
+      "answer_ref": "company.target_customers_he"
+    },
+    {
+      "intent": "SECURITY",
+      "requires_ai": false,
+      "patterns_he": [
+        "האם השרתים מאובטחים",
+        "האם המידע שלי מאובטח",
+        "אבטחת מידע"
+      ],
+      "answer_ref": "security.answer_he"
+    },
+    {
+      "intent": "WHY_AMK",
+      "requires_ai": false,
+      "patterns_he": [
+        "למה לבחור בכם",
+        "למה AMK",
+        "מה היתרון שלכם"
+      ],
+      "answer_ref": "company.advantages_he"
+    }
+  ],
+  "chatbot_runtime_policy": {
+    "priority": [
+      "Fast deterministic intent from this file",
+      "Authenticated customer-specific system data",
+      "CUSTOMER_VISIBLE knowledge retrieval",
+      "Gemini only when reasoning or free-form troubleshooting is actually needed"
+    ],
+    "rules": [
+      "Do not call Gemini for deterministic company facts already present in this file.",
+      "Cache this file server-side after first load.",
+      "Do not embed the full file on every message.",
+      "Use semantic search only for questions that are not matched confidently by fast intents.",
+      "Never expose SUPPORT_INTERNAL or TECHNICIAN_ONLY content to customers.",
+      "Reply in the same language as the customer's current message when possible.",
+      "Do not invent hours, phone numbers, service commitments, pricing, policies, or SLA details not present in this file."
+    ]
+  }
+}

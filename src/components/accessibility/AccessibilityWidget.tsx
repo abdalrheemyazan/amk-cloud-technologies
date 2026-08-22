@@ -143,16 +143,22 @@ export default function AccessibilityWidget({ children }: { children: ReactNode 
         ref={buttonRef}
         type="button"
         onClick={() => setIsOpen((isCurrentlyOpen) => !isCurrentlyOpen)}
-        aria-label={isOpen ? "סגירת כלי נגישות" : "פתיחת כלי נגישות"}
+        aria-label={isOpen ? "סגירת כלי נגישות" : "כלי נגישות"}
+        title="כלי נגישות"
         aria-expanded={isOpen}
         aria-controls="accessibility-tools-panel"
-        className={`fixed bottom-5 left-5 z-[9999] flex h-12 w-12 items-center justify-center rounded-full bg-[#2563EB] text-white shadow-[0_8px_24px_-4px_rgba(37,99,235,0.45)] transition-[transform,background-color,box-shadow] duration-200 hover:scale-105 hover:bg-blue-700 hover:shadow-[0_12px_28px_-4px_rgba(37,99,235,0.55)] ${CONTROL_FOCUS_STYLES}`}
+        className={`group fixed left-0 top-[38%] -translate-y-1/2 z-30 flex items-center gap-2 rounded-r-2xl border border-l-0 border-slate-200/90 bg-white/95 text-slate-800 shadow-[0_6px_20px_-4px_rgba(15,23,42,0.16)] backdrop-blur-md transition-all duration-[350ms] ease-out hover:border-slate-800 hover:bg-slate-900 hover:text-white hover:shadow-lg focus-visible:bg-slate-900 focus-visible:text-white py-2 pl-2 pr-3 ${CONTROL_FOCUS_STYLES}`}
       >
-        {isOpen ? (
-          <X className="h-5 w-5" aria-hidden="true" />
-        ) : (
-          <Accessibility className="h-5 w-5" aria-hidden="true" />
-        )}
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-xs transition-transform duration-[350ms] group-hover:scale-105">
+          {isOpen ? (
+            <X className="h-4 w-4" aria-hidden="true" />
+          ) : (
+            <Accessibility className="h-4 w-4" aria-hidden="true" />
+          )}
+        </span>
+        <span className="max-w-0 overflow-hidden whitespace-nowrap text-xs font-black opacity-0 transition-all duration-[350ms] ease-out group-hover:max-w-[110px] group-hover:opacity-100 group-focus-visible:max-w-[110px] group-focus-visible:opacity-100">
+          כלי נגישות
+        </span>
       </button>
 
       <AnimatePresence>
@@ -164,18 +170,28 @@ export default function AccessibilityWidget({ children }: { children: ReactNode 
             role="dialog"
             aria-label="כלי נגישות"
             initial={
-              settings.reduceMotion ? false : { opacity: 0, y: 10, scale: 0.985 }
+              settings.reduceMotion ? false : { opacity: 0, x: -16, scale: 0.98 }
             }
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 6, scale: 0.99 }}
+            animate={{ opacity: 1, x: 0, scale: 1 }}
+            exit={{ opacity: 0, x: -12, scale: 0.99 }}
             transition={panelTransition}
-            className="fixed bottom-20 left-5 z-[9999] max-h-[calc(100dvh-6.5rem)] w-[calc(100vw-2.5rem)] max-w-[350px] overflow-y-auto overscroll-contain rounded-[22px] border border-slate-200 bg-white shadow-[0_22px_60px_-18px_rgba(15,23,42,0.3)]"
+            className="fixed inset-x-3 bottom-4 sm:inset-x-auto sm:bottom-auto sm:left-4 sm:top-[clamp(16px,8vh,48px)] z-50 max-h-[85dvh] sm:max-h-[calc(100dvh-32px)] w-auto sm:w-[340px] max-w-[calc(100vw-1.5rem)] overflow-y-auto overscroll-contain rounded-[24px] border border-slate-200 bg-white shadow-[0_22px_60px_-18px_rgba(15,23,42,0.35)]"
           >
-            <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-5 py-4 backdrop-blur-sm">
-              <h2 className="text-base font-black text-slate-950">כלי נגישות</h2>
-              <p className="mt-1 text-xs font-semibold text-slate-500">
-                התאמת תצוגת האתר נשמרת באופן אוטומטי.
-              </p>
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white/95 px-5 py-3.5 backdrop-blur-sm">
+              <div>
+                <h2 className="text-sm font-black text-slate-950">כלי נגישות</h2>
+                <p className="mt-0.5 text-[11px] font-semibold text-slate-500">
+                  התאמת תצוגת האתר נשמרת באופן אוטומטי.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsOpen(false)}
+                className="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+                aria-label="סגור כלי נגישות"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
 
             <div className="space-y-3 p-4">

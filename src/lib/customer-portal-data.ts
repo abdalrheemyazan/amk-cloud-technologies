@@ -7,11 +7,24 @@ import type { CustomerSectionKey } from "@/lib/customer-portal-sections";
 import type { MyRequestSummary } from "@/lib/actions/support-chat-actions";
 import { devPerfReset, devPerfSummary } from "@/lib/dev-perf";
 
+export type CustomerPortalActivityItem = {
+  id: string;
+  type: string;
+  message: string;
+  createdAt: string;
+  sessionId: string;
+};
+
 export type CustomerPortalInitialData = {
   displayName: string | null;
   profileImageUrl: string | null;
   openRequestsCount: number;
+  inProgressCount: number;
+  waitingCustomerCount: number;
+  activeServicesCount: number;
+  recentUpdatesCount: number;
   recentRequests: MyRequestSummary[];
+  recentActivities: CustomerPortalActivityItem[];
   supportAvailable: boolean | null;
   profile: CustomerProfile | null;
 };
@@ -22,11 +35,8 @@ export type PortalShellData = {
   openRequestsCount: number;
 };
 
-const OPEN_STATUSES = ["PENDING", "ACTIVE"];
+const OPEN_STATUSES = ["PENDING", "NEW", "ACTIVE", "IN_PROGRESS", "WAITING_FOR_CUSTOMER", "WAITING_CUSTOMER", "WAITING_INTERNAL"];
 
-// The persistent portal layout (sidebar/user card/badge) and the active
-// section's page both need this — React's cache() dedupes it to a single
-// DB round trip per request instead of fetching it twice.
 export const getPortalShellData = cache(async (userId: string): Promise<PortalShellData> => {
   const [basicUser, openRequestsCount] = await Promise.all([
     prisma.user.findUnique({
@@ -70,15 +80,39 @@ export async function loadCustomerPortalData(
   activeSection: CustomerSectionKey,
 ): Promise<CustomerPortalInitialData> {
   const startedAt = performance.now();
-  // Reset here (not inside getPortalShellData) so the count below covers every
-  // query this navigation issues, including the shell query when it isn't cached yet.
   devPerfReset();
-  const needsRequests = activeSection === "overview" || activeSection === "requests";
-  const needsAvailability = activeSection === "overview" || activeSection === "chat";
+
+  const isOverview = activeSection === "overview";
+  const needsRequests = isOverview || activeSection === "requests";
+  const needsAvailability = isOverview || activeSection === "chat";
   const needsFullProfile = activeSection === "settings";
 
-  const [shell, recentSessions, availableAgent, profile] = await Promise.all([
+  const [
+    shell,
+    inProgressCount,
+    waitingCustomerCount,
+    activeServicesCount,
+    recentSessions,
+    recentActivities,
+    availableAgent,
+    profile,
+  ] = await Promise.all([
     getPortalShellData(userId),
+    isOverview
+      ? prisma.supportSession.count({
+          where: { customerId: userId, status: { in: ["ACTIVE", "IN_PROGRESS"] } },
+        })
+      : Promise.resolve(0),
+    isOverview
+      ? prisma.supportSession.count({
+          where: { customerId: userId, status: { in: ["WAITING_FOR_CUSTOMER", "WAITING_CUSTOMER"] } },
+        })
+      : Promise.resolve(0),
+    isOverview
+      ? prisma.service.count({
+          where: { status: "ACTIVE" },
+        })
+      : Promise.resolve(0),
     needsRequests
       ? prisma.supportSession.findMany({
           where: { customerId: userId, status: { not: "AI_CHAT" } },
@@ -92,7 +126,21 @@ export async function loadCustomerPortalData(
             closedAt: true,
           },
           orderBy: { createdAt: "desc" },
-          take: activeSection === "overview" ? 3 : 20,
+          take: isOverview ? 5 : 50,
+        })
+      : Promise.resolve([]),
+    isOverview
+      ? prisma.supportActivity.findMany({
+          where: { session: { customerId: userId } },
+          orderBy: { createdAt: "desc" },
+          take: 6,
+          select: {
+            id: true,
+            type: true,
+            message: true,
+            createdAt: true,
+            sessionId: true,
+          },
         })
       : Promise.resolve([]),
     needsAvailability
@@ -116,7 +164,18 @@ export async function loadCustomerPortalData(
     displayName: shell.displayName,
     profileImageUrl: shell.profileImageUrl,
     openRequestsCount: shell.openRequestsCount,
+    inProgressCount,
+    waitingCustomerCount,
+    activeServicesCount,
+    recentUpdatesCount: 2, // Announcements / maintenance notifications
     recentRequests: recentSessions.map(requestSummary),
+    recentActivities: recentActivities.map((a) => ({
+      id: a.id,
+      type: a.type,
+      message: a.message,
+      createdAt: a.createdAt.toISOString(),
+      sessionId: a.sessionId,
+    })),
     supportAvailable: needsAvailability ? Boolean(availableAgent) : null,
     profile,
   };

@@ -89,6 +89,7 @@ model User {
   waitingMessageTemplate    String?        @db.Text
   closingMessageTemplate    String?        @db.Text
   maxActiveChats            Int            @default(3)
+  maxLiveChats              Int            @default(1)
   defaultAvailabilityStatus PresenceStatus @default(AVAILABLE)
   autoAwayMinutes           Int?           @default(30)
   newRequestNotifications   Boolean        @default(true)
@@ -96,6 +97,11 @@ model User {
   tickets         Ticket[]           @relation("UserTickets")
   assignedTickets Ticket[]           @relation("AgentTickets")
   articles        KnowledgeArticle[]
+
+  // Prepared Responses relations
+  ownedPreparedResponses   PreparedResponse[] @relation("PreparedResponseOwner")
+  createdPreparedResponses PreparedResponse[] @relation("PreparedResponseCreator")
+  updatedPreparedResponses PreparedResponse[] @relation("PreparedResponseUpdater")
 
   // Live Technical Support relations
   customerSessions         SupportSession[]         @relation("SessionCustomer")
@@ -185,26 +191,26 @@ model KnowledgeDocument {
   updatedAt       DateTime  @updatedAt
   processedAt     DateTime?
 
-  chunks          KnowledgeChunk[]
+  chunks KnowledgeChunk[]
 
   @@index([status])
   @@index([sourceArticleId])
 }
 
 model KnowledgeChunk {
-  id         String            @id @default(cuid())
+  id         String                      @id @default(cuid())
   documentId String
-  document   KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  document   KnowledgeDocument           @relation(fields: [documentId], references: [id], onDelete: Cascade)
   chunkIndex Int
   pageNumber Int?
   title      String?
   category   String?
-  audience   String            @default("CUSTOMER_VISIBLE")
-  content    String            @db.Text
+  audience   String                      @default("CUSTOMER_VISIBLE")
+  content    String                      @db.Text
   // pgvector column — managed outside Prisma's type system; see prisma/enable-pgvector.ts
   // for the extension + column DDL and src/lib/knowledge/vector-search.ts for raw SQL access.
   embedding  Unsupported("vector(768)")?
-  createdAt  DateTime          @default(now())
+  createdAt  DateTime                    @default(now())
 
   @@index([documentId])
   @@index([audience])
@@ -226,38 +232,43 @@ enum SupportPriority {
 }
 
 model SupportSession {
-  id               String                    @id @default(cuid())
-  status           String                    @default("PENDING") // PENDING, ACTIVE, COMPLETED, CLOSED, REJECTED, EXPIRED
-  customerId       String
-  customer         User                      @relation("SessionCustomer", fields: [customerId], references: [id])
-  technicianId     String?
-  technician       User?                     @relation("SessionTechnician", fields: [technicianId], references: [id])
-  category         String?
-  subject          String?
-  summary          String?
+  id                String                    @id @default(cuid())
+  status            String                    @default("PENDING") // PENDING, ACTIVE, COMPLETED, CLOSED, REJECTED, EXPIRED
+  customerId        String
+  customer          User                      @relation("SessionCustomer", fields: [customerId], references: [id])
+  technicianId      String?
+  technician        User?                     @relation("SessionTechnician", fields: [technicianId], references: [id])
+  category          String?
+  subject           String?
+  summary           String?
   // Auto-classified on the server at submission from the request content/impact
   // (never from customer urgency wording). Nullable so existing rows stay valid;
   // code treats missing as MEDIUM. Staff may override; reason is internal-only.
-  priority         SupportPriority?
-  priorityReason   String?                   @db.Text
-  acceptedAt       DateTime?
-  closedAt         DateTime?
-  expiresAt        DateTime?
+  priority          SupportPriority?
+  priorityReason    String?                   @db.Text
+  acceptedAt        DateTime?
+  closedAt          DateTime?
+  expiresAt         DateTime?
   // True only while the session has never been escalated to a human (still AI_CHAT,
   // or closed by the customer without ever transferring). Flipped to false the moment
   // it's handed off — that's the signal that lets us hard-delete safely vs. soft-delete
   // to preserve the support/audit record.
-  isAiOnly         Boolean                   @default(false)
+  isAiOnly          Boolean                   @default(false)
   customerDeletedAt DateTime?
-  createdAt        DateTime                  @default(now())
-  updatedAt        DateTime                  @updatedAt
-  messages         SessionMessage[]
-  remotes          RemoteConnectionRequest[]
-  notes            TechnicianNote[]
-  internalMessages InternalSupportMessage[]
-  transfers        SupportTransfer[]
-  publicActivities SupportActivity[]
-  attachments      SupportAttachment[]
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+  messages          SessionMessage[]
+  remotes           RemoteConnectionRequest[]
+  notes             TechnicianNote[]
+  internalMessages  InternalSupportMessage[]
+  transfers         SupportTransfer[]
+  publicActivities  SupportActivity[]
+  attachments       SupportAttachment[]
+
+  @@index([customerId, status])
+  @@index([technicianId, status])
+  @@index([status, createdAt])
+  @@index([priority])
 }
 
 model InternalSupportMessage {
@@ -321,6 +332,7 @@ model SessionMessage {
   deletedById String?
   files       SupportAttachment[]
 
+  @@index([sessionId, createdAt])
   @@index([sessionId, deletedAt])
 }
 
@@ -384,6 +396,9 @@ model TechnicianNote {
   isPrivate    Boolean         @default(true)
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
+
+  @@index([sessionId, createdAt])
+  @@index([technicianId, createdAt])
 }
 
 // NextAuth core models
@@ -475,4 +490,40 @@ model TechnicianPresence {
   currentSupportSessionId String?
   lastSeenAt              DateTime       @default(now())
   updatedAt               DateTime       @updatedAt
+}
+
+enum ResponseScope {
+  PERSONAL
+  TEAM
+}
+
+enum PreparedResponseCategory {
+  GREETING
+  REQUEST_INFORMATION
+  WAITING
+  FOLLOW_UP
+  RESOLUTION
+  CLOSING
+  OTHER
+}
+
+model PreparedResponse {
+  id          String                   @id @default(cuid())
+  ownerId     String?
+  owner       User?                    @relation("PreparedResponseOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  title       String
+  category    PreparedResponseCategory @default(OTHER)
+  content     String                   @db.Text
+  scope       ResponseScope            @default(PERSONAL)
+  isActive    Boolean                  @default(true)
+  createdById String
+  createdBy   User                     @relation("PreparedResponseCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  updatedById String?
+  updatedBy   User?                    @relation("PreparedResponseUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime                 @default(now())
+  updatedAt   DateTime                 @updatedAt
+
+  @@index([ownerId])
+  @@index([scope, isActive])
+  @@index([category])
 }

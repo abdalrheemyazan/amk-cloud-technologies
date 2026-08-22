@@ -6,6 +6,8 @@ declare module "next-auth" {
       id: string;
       role: "CUSTOMER" | "SUPPORT_AGENT" | "CLOUD_ENGINEER" | "TEAM_LEADER" | "ADMINISTRATOR" | "TECHNICIAN";
       status: "PENDING" | "ACTIVE" | "REJECTED";
+      image?: string | null;
+      profileImageUrl?: string | null;
     } & DefaultSession["user"];
   }
 
@@ -13,6 +15,8 @@ declare module "next-auth" {
     id: string;
     role: "CUSTOMER" | "SUPPORT_AGENT" | "CLOUD_ENGINEER" | "TEAM_LEADER" | "ADMINISTRATOR" | "TECHNICIAN";
     status: "PENDING" | "ACTIVE" | "REJECTED";
+    image?: string | null;
+    profileImageUrl?: string | null;
   }
 }
 
@@ -21,5 +25,8 @@ declare module "next-auth/jwt" {
     id: string;
     role: "CUSTOMER" | "SUPPORT_AGENT" | "CLOUD_ENGINEER" | "TEAM_LEADER" | "ADMINISTRATOR" | "TECHNICIAN";
     status: "PENDING" | "ACTIVE" | "REJECTED";
+    image?: string | null;
+    picture?: string | null;
+    profileImageUrl?: string | null;
   }
 }

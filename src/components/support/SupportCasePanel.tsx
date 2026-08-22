@@ -138,7 +138,7 @@ export default function SupportCasePanel({
               {transferHistory.map((transfer) => (
                 <div key={transfer.id} className="rounded-xl bg-slate-50 px-3 py-2.5">
                   <p className="text-[10px] font-black text-slate-700">
-                    {transfer.fromAgentName} ? {transfer.toAgentName}
+                    {transfer.fromAgentName} ← {transfer.toAgentName}
                   </p>
                   <p className="mt-1 text-[9px] font-semibold text-slate-400">
                     {formatDateTime(transfer.createdAt)}

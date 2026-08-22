@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Menu, X } from "lucide-react";
 import CustomerPortalBrand from "./CustomerPortalBrand";
 import CustomerPortalSidebarContent from "./CustomerPortalSidebarContent";
+import CustomerSupportWidget from "./CustomerSupportWidget";
 import { pathnameToSection, type CustomerSectionKey } from "@/lib/customer-portal-sections";
 
 // Module-level (not per-instance) so it survives across mounts and can tell
@@ -61,7 +62,7 @@ export default function CustomerPortalShell({
   }
 
   return (
-    <div dir="rtl" className="min-h-screen bg-[#F4F7FB] lg:flex">
+    <div dir="rtl" className="min-h-screen bg-[#F4F7FB] lg:flex relative">
       {/* Desktop sidebar */}
       <aside className="hidden shrink-0 border-l border-[#E2E8F0] bg-white lg:sticky lg:top-0 lg:z-40 lg:flex lg:h-screen lg:w-64">
         <CustomerPortalSidebarContent
@@ -134,6 +135,9 @@ export default function CustomerPortalShell({
           {children}
         </main>
       </div>
+
+      {/* Global floating support assistant */}
+      <CustomerSupportWidget customerName={userName} />
     </div>
   );
 }

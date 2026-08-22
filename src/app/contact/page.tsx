@@ -9,6 +9,8 @@ import ContactForm from "@/components/legal/ContactForm";
 import { authOptions } from "@/lib/auth";
 import { isStaffRole } from "@/lib/roles";
 
+import { SUPPORT_CONTACT_CONFIG } from "@/lib/contact-config";
+
 export const metadata: Metadata = {
   title: "צור קשר | AMK Cloud Technologies",
   description: "יצירת קשר עם AMK Cloud Technologies.",
@@ -40,9 +42,13 @@ export default async function ContactPage() {
               <Mail className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
               <div>
                 <div className="text-[11px] text-[#94A3B8] font-bold">אימייל</div>
-                <div className="text-sm text-[#0F172A] font-semibold" dir="ltr">
-                  support@amk-cloud.com
-                </div>
+                <a
+                  href={`mailto:${SUPPORT_CONTACT_CONFIG.email}`}
+                  className="text-sm text-[#0F172A] font-semibold hover:text-blue-600 transition-colors"
+                  dir="ltr"
+                >
+                  {SUPPORT_CONTACT_CONFIG.email}
+                </a>
               </div>
             </div>
 
@@ -50,7 +56,13 @@ export default async function ContactPage() {
               <PhoneCall className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
               <div>
                 <div className="text-[11px] text-[#94A3B8] font-bold">טלפון</div>
-                <div className="text-sm text-[#0F172A] font-semibold">TODO</div>
+                <a
+                  href={`tel:${SUPPORT_CONTACT_CONFIG.phoneE164}`}
+                  className="text-sm text-[#0F172A] font-semibold hover:text-blue-600 transition-colors"
+                  dir="ltr"
+                >
+                  {SUPPORT_CONTACT_CONFIG.phoneDisplay}
+                </a>
               </div>
             </div>
 
@@ -58,7 +70,7 @@ export default async function ContactPage() {
               <Clock className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
               <div>
                 <div className="text-[11px] text-[#94A3B8] font-bold">שעות פעילות</div>
-                <div className="text-sm text-[#0F172A] font-semibold">ראשון - חמישי</div>
+                <div className="text-sm text-[#0F172A] font-semibold">{SUPPORT_CONTACT_CONFIG.workingHours}</div>
               </div>
             </div>
           </div>

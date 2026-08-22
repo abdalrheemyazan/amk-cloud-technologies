@@ -4,7 +4,6 @@ import {
   FileText,
   Inbox,
   LayoutDashboard,
-  MessageCircle,
   PlusCircle,
   Server,
   UserRoundCog,
@@ -16,13 +15,12 @@ export type CustomerNavSectionKey =
   | "services"
   | "new-request"
   | "requests"
-  | "chat"
   | "documents"
   | "updates"
   | "settings"
   | "contact";
 
-export type CustomerSectionKey = CustomerNavSectionKey;
+export type CustomerSectionKey = CustomerNavSectionKey | "chat";
 
 export const DEFAULT_CUSTOMER_SECTION: CustomerNavSectionKey = "overview";
 
@@ -31,7 +29,6 @@ export const CUSTOMER_NAV_ITEMS: { key: CustomerNavSectionKey; label: string; ic
   { key: "services", label: "השירותים שלי", icon: Server },
   { key: "new-request", label: "פתיחת פנייה", icon: PlusCircle },
   { key: "requests", label: "הפניות שלי", icon: Inbox },
-  { key: "chat", label: "צ׳אט תמיכה", icon: MessageCircle },
   { key: "documents", label: "מסמכים וקבצים", icon: FileText },
   { key: "updates", label: "הודעות ועדכונים", icon: Bell },
   { key: "settings", label: "הגדרות אישיות", icon: UserRoundCog },
@@ -40,7 +37,7 @@ export const CUSTOMER_NAV_ITEMS: { key: CustomerNavSectionKey; label: string; ic
 
 export const CUSTOMER_NAV_GROUPS: { label: string; keys: CustomerNavSectionKey[] }[] = [
   { label: "ראשי", keys: ["overview", "services"] },
-  { label: "תמיכה", keys: ["new-request", "requests", "chat"] },
+  { label: "תמיכה", keys: ["new-request", "requests"] },
   { label: "משאבים", keys: ["documents", "updates", "contact"] },
   { label: "חשבון", keys: ["settings"] },
 ];
@@ -50,7 +47,7 @@ export const CUSTOMER_SECTION_HREFS: Record<CustomerSectionKey, string> = {
   services: "/portal/services",
   "new-request": "/portal/new-request",
   requests: "/portal/requests",
-  chat: "/portal/chat",
+  chat: "/portal/requests",
   documents: "/portal/documents",
   updates: "/portal/updates",
   settings: "/portal/settings",

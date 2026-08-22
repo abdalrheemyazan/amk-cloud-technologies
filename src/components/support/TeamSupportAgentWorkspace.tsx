@@ -27,6 +27,8 @@ import {
   rejectChatRequest,
   sendAgentMessage,
   setAgentStatus,
+  setSessionWaitingCustomer,
+  setSessionWaitingInternal,
   type ActiveChat,
   type ChatMessageView,
   type PendingChatRequest,
@@ -291,6 +293,34 @@ export default function TeamSupportAgentWorkspace({
     await refreshAll();
   }
 
+  async function handleSetWaitingCustomer() {
+    if (!selectedChatId) return;
+    const result = await setSessionWaitingCustomer(selectedChatId);
+    if (!result.ok) {
+      setQueueNotice(result.error);
+      return;
+    }
+    if (result.data) {
+      setStatus(result.data.agentStatus);
+      setQueueNotice(result.data.message ?? "הפנייה הועברה להמתנה למענה מהלקוח.");
+    } else {
+      setQueueNotice("הפנייה הועברה להמתנה למענה מהלקוח.");
+    }
+    setSelectedChatId(null);
+    await refreshAll();
+  }
+
+  async function handleSetWaitingInternal() {
+    if (!selectedChatId) return;
+    const reason = window.prompt("הזן סיבת המתנה פנימית (אופציונלי):");
+    const result = await setSessionWaitingInternal(selectedChatId, reason || undefined);
+    if (!result.ok) {
+      setQueueNotice(result.error);
+      return;
+    }
+    setQueueNotice("הפנייה הועברה להמתנה לבדיקה פנימית.");
+    await refreshAll();
+  }
 
   function openInternalChat(agent: ConnectedSupportAgent) {
     setSelectedTeamAgent(agent);
@@ -433,6 +463,9 @@ export default function TeamSupportAgentWorkspace({
               onDismissClosed={() => setClosedChat(null)}
               agentName={displayName}
               cannedReplies={personalReplies}
+              onSetWaitingCustomer={handleSetWaitingCustomer}
+              onSetWaitingInternal={handleSetWaitingInternal}
+              onResolve={handleResolveChat}
             />
           </div>
 

@@ -503,6 +503,117 @@ export async function getMyChatMessages(sessionId: string): Promise<ActionResult
   }
 }
 
+export type CustomerTicketDetailView = {
+  id: string;
+  ticketDisplayId: string;
+  subject: string;
+  category: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  closedAt: string | null;
+  agentName: string | null;
+  agentRole: string | null;
+  agentImage: string | null;
+  messages: ChatMessageView[];
+  activities: Array<{
+    id: string;
+    type: string;
+    message: string;
+    createdAt: string;
+  }>;
+};
+
+export async function getCustomerTicketDetail(
+  sessionId: string
+): Promise<ActionResult<CustomerTicketDetailView>> {
+  const user = await requireUser();
+  if (!user) return { ok: false, error: "UNAUTHORIZED" };
+
+  try {
+    const session = await prisma.supportSession.findUnique({
+      where: { id: sessionId },
+      include: {
+        technician: {
+          select: {
+            name: true,
+            displayName: true,
+            role: true,
+            profileImageUrl: true,
+          },
+        },
+        messages: {
+          orderBy: { createdAt: "asc" },
+          include: {
+            files: {
+              where: { expiresAt: { gt: new Date() } },
+              orderBy: { createdAt: "asc" },
+            },
+          },
+        },
+        publicActivities: {
+          orderBy: { createdAt: "asc" },
+        },
+      },
+    });
+
+    if (!session || session.customerId !== user.id || session.customerDeletedAt) {
+      return { ok: false, error: "NOT_FOUND" };
+    }
+
+    const messages: ChatMessageView[] = session.messages.map((m) => {
+      const isDeleted = !!m.deletedAt;
+      const isFromCustomer = m.senderId === user.id;
+      return {
+        id: m.id,
+        message: isDeleted ? DELETED_MESSAGE_PLACEHOLDER : m.message,
+        isFromCustomer,
+        createdAt: m.createdAt.toISOString(),
+        attachments: isDeleted
+          ? []
+          : [...m.files.map(storedSupportAttachmentView), ...legacySupportAttachmentViews(m.attachments)],
+        deletable: isFromCustomer && m.senderRole === "CUSTOMER" && !isDeleted,
+        deleted: isDeleted,
+      };
+    });
+
+    const activities = session.publicActivities.map((a) => ({
+      id: a.id,
+      type: a.type,
+      message: a.message,
+      createdAt: a.createdAt.toISOString(),
+    }));
+
+    const agentName = session.technician
+      ? session.technician.displayName?.trim() || session.technician.name?.trim() || "נציג תמיכה"
+      : null;
+
+    const agentRole = session.technician ? ROLE_LABELS[session.technician.role] ?? "נציג תמיכה" : null;
+
+    return {
+      ok: true,
+      data: {
+        id: session.id,
+        ticketDisplayId: `#REQ-${session.id.slice(-6).toUpperCase()}`,
+        subject: session.subject || session.category || "פניית תמיכה",
+        category: session.category || "כללי",
+        status: session.status,
+        createdAt: session.createdAt.toISOString(),
+        updatedAt: session.updatedAt.toISOString(),
+        closedAt: session.closedAt ? session.closedAt.toISOString() : null,
+        agentName,
+        agentRole,
+        agentImage: session.technician?.profileImageUrl ?? null,
+        messages,
+        activities,
+      },
+    };
+  } catch (error) {
+    console.error("getCustomerTicketDetail failed:", error);
+    return { ok: false, error: GENERIC_ERROR };
+  }
+}
+
 export async function sendCustomerMessage(
   sessionId: string,
   text: string,
@@ -522,8 +633,24 @@ export async function sendCustomerMessage(
     if (!chatSession || chatSession.customerId !== user.id || chatSession.customerDeletedAt) {
       return { ok: false, error: "NOT_FOUND" };
     }
-    if (chatSession.status !== "ACTIVE") {
-      return { ok: false, error: "NOT_ACTIVE" };
+    const allowedStatuses = ["ACTIVE", "IN_PROGRESS", "WAITING_FOR_CUSTOMER", "WAITING_INTERNAL", "RESOLVED"];
+    if (!allowedStatuses.includes(chatSession.status)) {
+      return { ok: false, error: "הפנייה אינה פעילה ולא ניתן להוסיף הודעות." };
+    }
+
+    if (chatSession.status === "WAITING_FOR_CUSTOMER" || chatSession.status === "RESOLVED") {
+      await prisma.supportSession.update({
+        where: { id: sessionId },
+        data: { status: "ACTIVE" },
+      });
+      await prisma.supportActivity.create({
+        data: {
+          sessionId,
+          actorId: user.id,
+          type: "CUSTOMER_REPLIED",
+          message: "התקבלה תשובה מהלקוח והפנייה חזרה לטיפול פעיל",
+        },
+      });
     }
 
     await createSessionMessageWithAttachments({
@@ -535,6 +662,7 @@ export async function sendCustomerMessage(
     });
 
     revalidatePath("/support/agent");
+    revalidatePath("/portal");
     return { ok: true };
   } catch (error) {
     console.error("sendCustomerMessage failed:", error);
@@ -879,8 +1007,10 @@ export async function getActiveChats(): Promise<ActionResult<ActiveChat[]>> {
   }
 }
 
-const ALREADY_HANDLED_MESSAGE = "הבקשה כבר התקבלה על ידי נציג אחר.";
+const ALREADY_HANDLED_MESSAGE = "הפנייה כבר התקבלה על ידי נציג אחר.";
 const AGENT_OFFLINE_MESSAGE = "לא ניתן לקבל פניות חדשות במצב 'לא זמין'.";
+const CAPACITY_LIMIT_MESSAGE =
+  "קיימת אצלך שיחה פעילה עם לקוח אחר. סיים, המתן או העבר את השיחה לפני פתיחת שיחה חיה נוספת.";
 
 export type AgentStatusChange = { agentStatus: AgentStatus; message: string | null };
 
@@ -891,17 +1021,33 @@ export async function acceptChatRequest(
   if (!user) return { ok: false, error: "UNAUTHORIZED" };
 
   try {
-    const presence = await prisma.technicianPresence.findUnique({ where: { technicianId: user.id } });
+    const [presence, userProfile] = await Promise.all([
+      prisma.technicianPresence.findUnique({ where: { technicianId: user.id } }),
+      prisma.user.findUnique({
+        where: { id: user.id },
+        select: { maxLiveChats: true, maxActiveChats: true },
+      }),
+    ]);
+
     const currentStatus = normalizeAgentStatus(presence?.status);
     if (currentStatus === "OFFLINE") {
       return { ok: false, error: AGENT_OFFLINE_MESSAGE };
+    }
+
+    const maxLive = userProfile?.maxLiveChats ?? 1;
+    const currentLiveChatsCount = await prisma.supportSession.count({
+      where: { technicianId: user.id, status: { in: ["ACTIVE", "IN_PROGRESS"] } },
+    });
+
+    if (currentLiveChatsCount >= maxLive) {
+      return { ok: false, error: CAPACITY_LIMIT_MESSAGE };
     }
 
     const outcome = await prisma.$transaction(async (tx) => {
       // Conditional update guards against two agents accepting the same request at once:
       // only the request that still matches PENDING + unassigned wins the row.
       const updated = await tx.supportSession.updateMany({
-        where: { id: sessionId, status: "PENDING", technicianId: null },
+        where: { id: sessionId, status: { in: ["PENDING", "NEW"] }, technicianId: null },
         data: { technicianId: user.id, status: "ACTIVE", acceptedAt: new Date() },
       });
 
@@ -912,7 +1058,7 @@ export async function acceptChatRequest(
           sessionId,
           actorId: user.id,
           type: "AGENT_JOINED",
-          message: "נציג תמיכה הצטרף לשיחה",
+          message: "נציג תמיכה קיבל את הפנייה והצטרף לשיחה",
         },
       });
 
@@ -924,6 +1070,7 @@ export async function acceptChatRequest(
     }
 
     revalidatePath("/support/agent");
+    revalidatePath("/portal");
     return {
       ok: true,
       data: {
@@ -943,7 +1090,7 @@ export async function rejectChatRequest(sessionId: string): Promise<ActionResult
 
   try {
     const result = await prisma.supportSession.updateMany({
-      where: { id: sessionId, status: "PENDING", technicianId: null },
+      where: { id: sessionId, status: { in: ["PENDING", "NEW"] }, technicianId: null },
       data: { status: "REJECTED" },
     });
 
@@ -982,8 +1129,6 @@ export async function getAgentChatMessages(sessionId: string): Promise<ActionRes
 
     return {
       ok: true,
-      // Staff always sees the real content — a customer hiding a message on their
-      // side must not erase it from the support/audit record.
       data: messages.map((m) => ({
         id: m.id,
         message: m.message,
@@ -1022,8 +1167,19 @@ export async function sendAgentMessage(
     if (!chatSession || !canAccessSession(chatSession, user)) {
       return { ok: false, error: "NOT_FOUND" };
     }
-    if (chatSession.status !== "ACTIVE") {
-      return { ok: false, error: "NOT_ACTIVE" };
+
+    const isOwnerOrLeader =
+      chatSession.technicianId === user.id ||
+      user.role === "ADMINISTRATOR" ||
+      user.role === "TEAM_LEADER";
+
+    if (!isOwnerOrLeader) {
+      return { ok: false, error: "רק הנציג המטפל בפנייה או מנהל צוות רשאים לשלוח תגובות ללקוח." };
+    }
+
+    const activeStatuses = ["ACTIVE", "IN_PROGRESS", "WAITING_FOR_CUSTOMER", "WAITING_INTERNAL"];
+    if (!activeStatuses.includes(chatSession.status)) {
+      return { ok: false, error: "הפנייה אינה פעילה." };
     }
 
     await createSessionMessageWithAttachments({
@@ -1035,10 +1191,196 @@ export async function sendAgentMessage(
     });
 
     revalidatePath("/support/agent");
+    revalidatePath("/portal");
     return { ok: true };
   } catch (error) {
     console.error("sendAgentMessage failed:", error);
     return { ok: false, error: validated.attachments.length > 0 ? UPLOAD_ERROR : GENERIC_ERROR };
+  }
+}
+
+export async function setSessionWaitingCustomer(sessionId: string): Promise<ActionResult<AgentStatusChange | null>> {
+  const user = await requireStaffUser();
+  if (!user) return { ok: false, error: "UNAUTHORIZED" };
+
+  try {
+    const chatSession = await prisma.supportSession.findUnique({ where: { id: sessionId } });
+    if (!chatSession || !canAccessSession(chatSession, user)) {
+      return { ok: false, error: "NOT_FOUND" };
+    }
+
+    const technicianId = chatSession.technicianId;
+
+    const outcome = await prisma.$transaction(async (tx) => {
+      await tx.supportSession.update({
+        where: { id: sessionId },
+        data: { status: "WAITING_FOR_CUSTOMER" },
+      });
+
+      await tx.supportActivity.create({
+        data: {
+          sessionId,
+          actorId: user.id,
+          type: "WAITING_FOR_CUSTOMER",
+          message: "נציג התמיכה ממתין למענה מהלקוח",
+        },
+      });
+
+      if (!technicianId) return null;
+      return recomputePresenceAfterSessionLoss(tx, technicianId);
+    });
+
+    revalidatePath("/support/agent");
+    revalidatePath("/portal");
+
+    if (!outcome || technicianId !== user.id) {
+      return { ok: true, data: null };
+    }
+
+    return {
+      ok: true,
+      data: {
+        agentStatus: outcome.status,
+        message: "הפנייה הועברה להמתנה ללקוח ושוחררה מכסת השיחות החיות.",
+      },
+    };
+  } catch (error) {
+    console.error("setSessionWaitingCustomer failed:", error);
+    return { ok: false, error: GENERIC_ERROR };
+  }
+}
+
+export async function setSessionWaitingInternal(
+  sessionId: string,
+  reason?: string
+): Promise<ActionResult> {
+  const user = await requireStaffUser();
+  if (!user) return { ok: false, error: "UNAUTHORIZED" };
+
+  try {
+    const chatSession = await prisma.supportSession.findUnique({ where: { id: sessionId } });
+    if (!chatSession || !canAccessSession(chatSession, user)) {
+      return { ok: false, error: "NOT_FOUND" };
+    }
+
+    await prisma.supportSession.update({
+      where: { id: sessionId },
+      data: { status: "WAITING_INTERNAL" },
+    });
+
+    await prisma.supportActivity.create({
+      data: {
+        sessionId,
+        actorId: user.id,
+        type: "WAITING_INTERNAL",
+        message: reason ? `ממתין לבדיקה פנימית: ${reason}` : "הפנייה ממתינה לבדיקה טכנית / אישור פנימי",
+      },
+    });
+
+    revalidatePath("/support/agent");
+    return { ok: true };
+  } catch (error) {
+    console.error("setSessionWaitingInternal failed:", error);
+    return { ok: false, error: GENERIC_ERROR };
+  }
+}
+
+export async function reopenSupportSession(sessionId: string): Promise<ActionResult<AgentStatusChange | null>> {
+  const user = await requireStaffUser();
+  if (!user) return { ok: false, error: "UNAUTHORIZED" };
+
+  try {
+    const chatSession = await prisma.supportSession.findUnique({ where: { id: sessionId } });
+    if (!chatSession || !canAccessSession(chatSession, user)) {
+      return { ok: false, error: "NOT_FOUND" };
+    }
+
+    const technicianId = chatSession.technicianId || user.id;
+
+    const outcome = await prisma.$transaction(async (tx) => {
+      await tx.supportSession.update({
+        where: { id: sessionId },
+        data: { status: "ACTIVE", technicianId },
+      });
+
+      await tx.supportActivity.create({
+        data: {
+          sessionId,
+          actorId: user.id,
+          type: "REOPENED",
+          message: "הפנייה חזרה לטיפול פעיל",
+        },
+      });
+
+      return recomputePresenceAfterSessionGain(tx, technicianId);
+    });
+
+    revalidatePath("/support/agent");
+    revalidatePath("/portal");
+
+    return {
+      ok: true,
+      data: {
+        agentStatus: outcome.status,
+        message: "הפנייה חזרה לטיפול פעיל.",
+      },
+    };
+  } catch (error) {
+    console.error("reopenSupportSession failed:", error);
+    return { ok: false, error: GENERIC_ERROR };
+  }
+}
+
+export async function customerConfirmResolution(
+  sessionId: string,
+  confirmed: boolean
+): Promise<ActionResult> {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) return { ok: false, error: "UNAUTHORIZED" };
+  const userId = session.user.id as string;
+
+  try {
+    const chatSession = await prisma.supportSession.findUnique({ where: { id: sessionId } });
+    if (!chatSession || chatSession.customerId !== userId) {
+      return { ok: false, error: "NOT_FOUND" };
+    }
+
+    if (confirmed) {
+      await prisma.supportSession.update({
+        where: { id: sessionId },
+        data: { status: "CLOSED", closedAt: new Date() },
+      });
+
+      await prisma.supportActivity.create({
+        data: {
+          sessionId,
+          actorId: userId,
+          type: "CLOSED",
+          message: "הלקוח אישר כי התקלה נפתרה בהצלחה. הפנייה נסגרה.",
+        },
+      });
+    } else {
+      await prisma.supportSession.update({
+        where: { id: sessionId },
+        data: { status: "ACTIVE" },
+      });
+
+      await prisma.supportActivity.create({
+        data: {
+          sessionId,
+          actorId: userId,
+          type: "REOPENED",
+          message: "הלקוח ציין כי הבעיה עדיין קיימת. הפנייה חזרה לטיפול.",
+        },
+      });
+    }
+
+    revalidatePath("/portal");
+    revalidatePath("/support/agent");
+    return { ok: true };
+  } catch (error) {
+    console.error("customerConfirmResolution failed:", error);
+    return { ok: false, error: GENERIC_ERROR };
   }
 }
 

@@ -1097,13 +1097,13 @@ export default function LandingPage() {
               </div>
             </a>
 
-            <a href="tel:0779903638" className="bg-slate-50/50 backdrop-blur-md rounded-2xl p-6 border border-slate-100 flex items-center gap-4 justify-center md:justify-start hover:shadow-[0_12px_30px_rgba(37,99,235,0.12)] hover:-translate-y-1 hover:border-blue-300/85 hover:bg-white transition-all duration-300 group">
+            <a href="tel:+972779909830" className="bg-slate-50/50 backdrop-blur-md rounded-2xl p-6 border border-slate-100 flex items-center gap-4 justify-center md:justify-start hover:shadow-[0_12px_30px_rgba(37,99,235,0.12)] hover:-translate-y-1 hover:border-blue-300/85 hover:bg-white transition-all duration-300 group">
               <div className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center text-blue-600 shadow-sm border border-slate-100/80 group-hover:bg-blue-600 group-hover:text-white transition-all duration-300">
                 <PhoneCall className="w-5 h-5" />
               </div>
               <div className="text-right">
                 <div className="font-black text-slate-900 text-sm transition-colors">טלפון</div>
-                <div className="text-slate-500 font-semibold text-sm">077-990-3638</div>
+                <div className="text-slate-500 font-semibold text-sm">077-990-9830</div>
               </div>
             </a>
 

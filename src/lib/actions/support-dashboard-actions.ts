@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { getServerSession } from "next-auth";
 import type { Role } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
@@ -17,7 +18,6 @@ import {
 
 type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
-const GENERIC_ERROR = "לא ניתן לטעון את נתוני לוח התמיכה כרגע.";
 const PRESENCE_WINDOW_MS = 2 * 60 * 1000;
 const PRIORITY_QUEUE_LIMIT = 50;
 
@@ -355,9 +355,11 @@ export async function getSupportDashboardData(): Promise<ActionResult<SupportDas
       },
     };
   } catch (error) {
-    if (process.env.NODE_ENV === "development") {
-      console.error("getSupportDashboardData failed:", error);
-    }
-    return { ok: false, error: GENERIC_ERROR };
+    const correlationId = randomUUID().slice(0, 8).toUpperCase();
+    console.error(`[ERR-${correlationId}] getSupportDashboardData failed:`, error);
+    return {
+      ok: false,
+      error: `לא הצלחנו לטעון את נתוני הלוח (קוד: ERR-${correlationId}). נסו שוב בעוד מספר רגעים.`,
+    };
   }
 }

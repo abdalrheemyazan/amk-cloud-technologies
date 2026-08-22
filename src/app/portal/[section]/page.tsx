@@ -52,6 +52,10 @@ export default async function CustomerPortalSectionPage({
     redirect(POLICY_DOCUMENTS[section].portalHref);
   }
 
+  if (section === "chat") {
+    redirect("/portal/requests");
+  }
+
   const config = PORTAL_SECTIONS[section];
 
   if (!config) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { signIn, getSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { getPostLoginRedirect } from "@/lib/roles";
@@ -25,6 +25,23 @@ export default function LoginPage() {
   const [resetEmail, setResetEmail] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  // Automatically purge any stale chunked cookies (e.g. next-auth.session-token.0..100) from previous oversized sessions
+  useEffect(() => {
+    if (typeof document !== "undefined") {
+      const cookies = document.cookie.split(";");
+      for (const rawCookie of cookies) {
+        const name = rawCookie.split("=")[0].trim();
+        if (
+          name.includes("next-auth.session-token.") ||
+          name.includes("__Secure-next-auth.session-token.") ||
+          name.includes("authjs.session-token.")
+        ) {
+          document.cookie = `${name}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax`;
+        }
+      }
+    }
+  }, []);
 
   // States for customer registration request
   const [regName, setRegName] = useState("");
@@ -109,7 +126,7 @@ export default function LoginPage() {
     setGoogleLoading(true);
     setError("");
     try {
-      await signIn("google", { callbackUrl: "/dashboard" });
+      await signIn("google", { callbackUrl: "/portal" });
     } catch (_err) {
       setError("אירעה שגיאה בחיבור לחשבון Google.");
       setGoogleLoading(false);
