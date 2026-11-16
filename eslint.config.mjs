@@ -12,11 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
-    // Legacy / test files — not part of the active application
+    // Legacy files — not part of the active application
     "_disabled_api/**",
-    "test-connection.js",
-    "test-db.js",
-    "test-single.js",
   ]),
 ]);
 

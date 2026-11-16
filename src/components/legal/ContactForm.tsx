@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { Loader2, CheckCircle2, Send } from "lucide-react";
 
-// TODO: Wire this form up to a real email/notification backend before production launch.
 export default function ContactForm() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -11,15 +10,32 @@ export default function ContactForm() {
   const [company, setCompany] = useState("");
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
+  const [website, setWebsite] = useState("");
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [error, setError] = useState("");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 900));
-    setLoading(false);
-    setSuccess(true);
+    setError("");
+    try {
+      const response = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email, phone, company, subject, message, website }),
+      });
+      const data = (await response.json().catch(() => ({}))) as { error?: string };
+      if (!response.ok) {
+        setError(data.error || "לא ניתן לשלוח את הפנייה כרגע. נסו שוב מאוחר יותר.");
+        return;
+      }
+      setSuccess(true);
+    } catch {
+      setError("לא ניתן לשלוח את הפנייה כרגע. בדקו את החיבור לאינטרנט ונסו שוב.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   if (success) {
@@ -94,6 +110,25 @@ export default function ContactForm() {
           />
         </div>
       </div>
+
+      {/* Honeypot for bots — hidden from people and screen readers */}
+      <div aria-hidden="true" className="hidden">
+        <label>
+          Website
+          <input
+            tabIndex={-1}
+            autoComplete="off"
+            value={website}
+            onChange={(e) => setWebsite(e.target.value)}
+          />
+        </label>
+      </div>
+
+      {error && (
+        <p role="alert" className="text-sm font-bold text-red-600 bg-red-50 border border-red-200 rounded-xl px-3.5 py-2.5">
+          {error}
+        </p>
+      )}
 
       <button
         type="submit"

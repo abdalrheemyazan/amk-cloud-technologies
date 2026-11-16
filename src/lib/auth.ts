@@ -61,20 +61,24 @@ export const authOptions: NextAuthOptions = {
 
         try {
           const dbStartedAt = performance.now();
-          user = await prisma.user.findUnique({
-            where: { email },
-            select: {
-              id: true,
-              email: true,
-              password: true,
-              role: true,
-              status: true,
-              name: true,
-              displayName: true,
-              profileImageUrl: true,
-              defaultAvailabilityStatus: true,
-            },
-          });
+          const loginSelect = {
+            id: true,
+            email: true,
+            password: true,
+            role: true,
+            status: true,
+            name: true,
+            displayName: true,
+            profileImageUrl: true,
+            defaultAvailabilityStatus: true,
+          } as const;
+          // Older accounts may be stored with mixed-case emails.
+          user =
+            (await prisma.user.findUnique({ where: { email }, select: loginSelect })) ??
+            (await prisma.user.findFirst({
+              where: { email: { equals: email, mode: "insensitive" } },
+              select: loginSelect,
+            }));
           devLog(`authorize:db-lookup-by-email ${Math.round(performance.now() - dbStartedAt)}ms`);
         } catch (error) {
           console.error("Login authorize failed:", error);
@@ -166,22 +170,30 @@ export const authOptions: NextAuthOptions = {
         const googlePhoto = user.image || (profile as { picture?: string })?.picture || null;
 
         try {
-          let dbUser = await prisma.user.findUnique({
-            where: { email },
-            select: {
-              id: true,
-              email: true,
-              role: true,
-              status: true,
-              name: true,
-              displayName: true,
-              profileImageUrl: true,
-            },
-          });
+          const googleUserSelect = {
+            id: true,
+            email: true,
+            role: true,
+            status: true,
+            name: true,
+            displayName: true,
+            profileImageUrl: true,
+          } as const;
+          // Older accounts may be stored with mixed-case emails.
+          const dbUser =
+            (await prisma.user.findUnique({ where: { email }, select: googleUserSelect })) ??
+            (await prisma.user.findFirst({
+              where: { email: { equals: email, mode: "insensitive" } },
+              select: googleUserSelect,
+            }));
 
           if (dbUser) {
+            // Google sign-in must respect the same approval gate as email/password login.
             if (dbUser.status === "REJECTED") {
-              return false;
+              return "/login?error=REJECTED_USER";
+            }
+            if (dbUser.status === "PENDING") {
+              return "/login?error=PENDING_APPROVAL";
             }
             // Safely store Google profile picture if the AMK user has no custom avatar yet
             if (!dbUser.profileImageUrl && googlePhoto) {
@@ -192,30 +204,25 @@ export const authOptions: NextAuthOptions = {
               dbUser.profileImageUrl = googlePhoto;
             }
           } else {
-            // Automatically create a new AMK customer account for first-time Google sign-ins
+            // First-time Google sign-in: create a join request that waits for
+            // admin approval, exactly like the email registration form does.
             const rawName = user.name || (profile as { name?: string })?.name || email.split("@")[0] || "לקוח Google";
             const dummyHash = await bcrypt.hash(crypto.randomUUID(), 10);
 
-            dbUser = await prisma.user.create({
+            await prisma.user.create({
               data: {
                 email,
                 name: rawName,
                 displayName: rawName,
                 profileImageUrl: googlePhoto,
                 role: "CUSTOMER",
-                status: "ACTIVE",
+                status: "PENDING",
                 password: dummyHash,
+                shortMessage: "נרשם/ה באמצעות Google",
               },
-              select: {
-                id: true,
-                email: true,
-                role: true,
-                status: true,
-                name: true,
-                displayName: true,
-                profileImageUrl: true,
-              },
+              select: { id: true },
             });
+            return "/login?error=PENDING_APPROVAL_NEW";
           }
 
           // Propagate DB user properties and sanitized avatar to NextAuth user object for the JWT callback
@@ -228,7 +235,7 @@ export const authOptions: NextAuthOptions = {
           return true;
         } catch (err) {
           console.error("[auth] Google signIn callback error:", err);
-          return false;
+          return "/login?error=GOOGLE_SIGNIN_FAILED";
         }
       }
       return true;

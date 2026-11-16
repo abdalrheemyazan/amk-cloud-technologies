@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
+import { validateNewPassword } from "@/lib/password-reset";
 
 export async function POST(req: NextRequest) {
   try {
-    const { name, companyName, email, phone, requestedService, shortMessage, password } = await req.json();
+    const { name, companyName, email: rawEmail, phone, requestedService, shortMessage, password } = await req.json();
+    const email = typeof rawEmail === "string" ? rawEmail.trim().toLowerCase() : "";
 
     if (!name || !email || !password) {
       return NextResponse.json(
@@ -13,9 +15,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Check if user already exists
-    const existingUser = await prisma.user.findUnique({
-      where: { email },
+    const passwordError = validateNewPassword(password);
+    if (passwordError) {
+      return NextResponse.json({ error: passwordError }, { status: 400 });
+    }
+
+    // Check if user already exists (case-insensitive: older rows may be mixed-case)
+    const existingUser = await prisma.user.findFirst({
+      where: { email: { equals: email, mode: "insensitive" } },
+      select: { id: true },
     });
 
     if (existingUser) {
