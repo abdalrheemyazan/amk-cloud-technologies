@@ -63,6 +63,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
 
   // States for reset submission
   const [resetLoading, setResetLoading] = useState(false);
@@ -71,10 +72,32 @@ export default function LoginPage() {
 
   const router = useRouter();
 
+  // Google sign-in reports its outcome through ?error=… on /login.
+  useEffect(() => {
+    const code = new URLSearchParams(window.location.search).get("error");
+    if (!code) return;
+    const notices: Record<string, string> = {
+      PENDING_APPROVAL: "החשבון ממתין לאישור מנהל.",
+      PENDING_APPROVAL_NEW: "בקשת ההצטרפות שלך התקבלה וממתינה לאישור מנהל. נעדכן אותך כשהחשבון יאושר.",
+    };
+    const errors: Record<string, string> = {
+      REJECTED_USER: "בקשת ההצטרפות שלך נדחתה. פנה לתמיכה לקבלת פרטים.",
+    };
+    /* eslint-disable react-hooks/set-state-in-effect -- one-time read of the URL on mount */
+    if (notices[code]) {
+      setNotice(notices[code]);
+    } else {
+      setError(errors[code] ?? "לא ניתן היה להתחבר עם Google. נסו שוב או התחברו עם אימייל וסיסמה.");
+    }
+    /* eslint-enable react-hooks/set-state-in-effect */
+    window.history.replaceState(null, "", window.location.pathname);
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError("");
+    setNotice("");
 
     const isDev = process.env.NODE_ENV === "development";
     const submitStartedAt = isDev ? performance.now() : 0;
@@ -140,11 +163,19 @@ export default function LoginPage() {
     setResetSuccess(false);
 
     try {
-      // Simulate real API dispatch for reset email
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      setResetSuccess(true);
-    } catch (_error) {
-      setResetError("אירעה שגיאה בשליחת קישור האיפוס.");
+      const response = await fetch("/api/auth/password-reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: resetEmail }),
+      });
+      const data = (await response.json().catch(() => ({}))) as { error?: string };
+      if (response.ok) {
+        setResetSuccess(true);
+      } else {
+        setResetError(data.error || "אירעה שגיאה בשליחת קישור האיפוס.");
+      }
+    } catch {
+      setResetError("אירעה שגיאה בשליחת קישור האיפוס. בדקו את החיבור לאינטרנט ונסו שוב.");
     } finally {
       setResetLoading(false);
     }
@@ -190,9 +221,8 @@ export default function LoginPage() {
       } else {
         setRegError(data.error || "אירעה שגיאה בעיבוד בקשת ההצטרפות.");
       }
-    } catch (_error) {
-      // Graceful offline fallback simulation
-      setRegSuccess(true);
+    } catch {
+      setRegError("לא ניתן לשלוח את בקשת ההצטרפות כרגע. בדקו את החיבור לאינטרנט ונסו שוב.");
     } finally {
       setRegLoading(false);
     }
@@ -305,6 +335,17 @@ export default function LoginPage() {
                     className="mb-5 p-4 bg-red-50 border border-red-200/80 text-red-600 text-xs font-bold rounded-2xl text-center shadow-sm"
                   >
                     {error}
+                  </motion.div>
+                )}
+                {notice && !error && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    role="status"
+                    className="mb-5 p-4 bg-blue-50 border border-blue-200/80 text-blue-700 text-xs font-bold rounded-2xl text-center shadow-sm"
+                  >
+                    {notice}
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -540,7 +581,7 @@ export default function LoginPage() {
                     className="mb-5 p-4 bg-emerald-50 border border-emerald-200/80 text-emerald-600 text-xs font-bold rounded-2xl text-center shadow-sm flex items-center justify-center gap-2"
                   >
                     <CheckCircle2 className="w-4 h-4 shrink-0" />
-                    נשלח קישור לאיפוס הסיסמה לכתובת האימייל שהזנתם.
+                    אם הכתובת רשומה במערכת, נשלח אליה קישור לאיפוס הסיסמה (תקף לשעה).
                   </motion.div>
                 )}
                 {resetError && (

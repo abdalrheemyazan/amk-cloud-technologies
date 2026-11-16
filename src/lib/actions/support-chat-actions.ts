@@ -23,13 +23,11 @@ import {
   type SupportAttachmentUpload,
   type SupportAttachmentView,
 } from "@/lib/support-attachments";
-import { removeSupportAttachmentObjects } from "@/lib/support-attachment-storage";
+import { cleanupExpiredSupportSessions } from "@/lib/support-session-cleanup";
 
 const GENERIC_ERROR = "לא ניתן לטעון את הנתונים כרגע. נסה שוב בעוד מספר רגעים.";
 const UPLOAD_ERROR = "לא ניתן להעלות את התמונה כרגע. נסה שוב בעוד מספר רגעים.";
 const SESSION_TTL_DAYS = 7;
-const CLEANUP_MIN_INTERVAL_MS = 60_000;
-let lastCleanupAt = 0;
 export type ChatAttachment = SupportAttachmentView;
 
 type ActionResult<T = undefined> =
@@ -50,57 +48,6 @@ async function requireStaffUser() {
 
 function canAccessSession(session: { technicianId: string | null }, user: { id: string; role: Role }) {
   return session.technicianId === user.id || user.role === "ADMINISTRATOR";
-}
-
-export async function cleanupExpiredSupportSessions() {
-  const cleanupStartedAt = Date.now();
-  if (cleanupStartedAt - lastCleanupAt < CLEANUP_MIN_INTERVAL_MS) return;
-  lastCleanupAt = cleanupStartedAt;
-
-  const now = new Date();
-  const internalMessageCutoff = new Date(now.getTime() - SESSION_TTL_DAYS * 24 * 60 * 60 * 1000);
-  const expired = await prisma.supportSession.findMany({
-    where: {
-      status: { in: ["PENDING", "ACTIVE", "AI_CHAT"] },
-      expiresAt: { lt: now },
-    },
-    select: { id: true, status: true },
-  });
-  const expiredIds = expired.map((s) => s.id);
-  const expiredAiIds = expired.filter((session) => session.status === "AI_CHAT").map((session) => session.id);
-  const expiredSupportIds = expired.filter((session) => session.status !== "AI_CHAT").map((session) => session.id);
-  const expiredAttachments = await prisma.supportAttachment.findMany({
-    where: {
-      OR: [
-        { expiresAt: { lt: now } },
-        ...(expiredIds.length > 0 ? [{ sessionId: { in: expiredIds } }] : []),
-      ],
-    },
-    select: { storagePath: true, storageProvider: true },
-  });
-
-  await removeSupportAttachmentObjects(expiredAttachments).catch((error) => {
-    console.error("Failed to remove expired support attachments from storage:", error);
-  });
-
-  await prisma.$transaction(async (tx) => {
-    if (expiredSupportIds.length > 0) {
-      await tx.supportSession.updateMany({
-        where: { id: { in: expiredSupportIds } },
-        data: { status: "EXPIRED" },
-      });
-      await tx.sessionMessage.deleteMany({ where: { sessionId: { in: expiredSupportIds } } });
-    }
-    if (expiredAiIds.length > 0) {
-      await tx.supportSession.deleteMany({ where: { id: { in: expiredAiIds } } });
-    }
-
-    await tx.internalSupportMessage.deleteMany({
-      where: { createdAt: { lt: internalMessageCutoff } },
-    });
-    await tx.supportAttachment.deleteMany({ where: { expiresAt: { lt: now } } });
-    await tx.internalChatClearState.deleteMany({ where: { clearedAt: { lt: internalMessageCutoff } } });
-  });
 }
 
 async function createSessionMessageWithAttachments({

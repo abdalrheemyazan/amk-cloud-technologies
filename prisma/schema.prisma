@@ -334,6 +334,7 @@ model SessionMessage {
 
   @@index([sessionId, createdAt])
   @@index([sessionId, deletedAt])
+  @@index([senderId, createdAt])
 }
 
 model SupportAttachment {

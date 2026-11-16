@@ -1,4 +1,5 @@
 import { NextAuthOptions } from "next-auth";
+import type { JWT } from "next-auth/jwt";
 import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
 import { prisma } from "./prisma";
@@ -40,6 +41,36 @@ function sanitizeJwtAvatar(url: string | null | undefined): string | null {
   return null;
 }
 
+const AUTH_RECHECK_INTERVAL_MS = 60_000;
+const authStateCache = new Map<string, { at: number; value: AuthState }>();
+type AuthState = { role: JWT["role"]; status: JWT["status"] } | "MISSING" | null;
+
+/**
+ * Current role/status for a signed-in user. Returns "MISSING" when the account
+ * no longer exists and null when the database can't be reached (in which case
+ * we keep the existing session rather than logging everyone out). Results are
+ * cached briefly per server instance so server components that read the session
+ * several times per request don't each hit the database.
+ */
+async function loadAuthState(userId: string): Promise<AuthState> {
+  const cached = authStateCache.get(userId);
+  if (cached && Date.now() - cached.at < AUTH_RECHECK_INTERVAL_MS) return cached.value;
+
+  try {
+    const row = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true, status: true },
+    });
+    const value: AuthState = row ? { role: row.role, status: row.status } : "MISSING";
+    if (authStateCache.size > 5000) authStateCache.clear();
+    authStateCache.set(userId, { at: Date.now(), value });
+    return value;
+  } catch (err) {
+    console.error("[auth] session re-check failed:", err);
+    return null;
+  }
+}
+
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
@@ -61,20 +92,24 @@ export const authOptions: NextAuthOptions = {
 
         try {
           const dbStartedAt = performance.now();
-          user = await prisma.user.findUnique({
-            where: { email },
-            select: {
-              id: true,
-              email: true,
-              password: true,
-              role: true,
-              status: true,
-              name: true,
-              displayName: true,
-              profileImageUrl: true,
-              defaultAvailabilityStatus: true,
-            },
-          });
+          const loginSelect = {
+            id: true,
+            email: true,
+            password: true,
+            role: true,
+            status: true,
+            name: true,
+            displayName: true,
+            profileImageUrl: true,
+            defaultAvailabilityStatus: true,
+          } as const;
+          // Older accounts may be stored with mixed-case emails.
+          user =
+            (await prisma.user.findUnique({ where: { email }, select: loginSelect })) ??
+            (await prisma.user.findFirst({
+              where: { email: { equals: email, mode: "insensitive" } },
+              select: loginSelect,
+            }));
           devLog(`authorize:db-lookup-by-email ${Math.round(performance.now() - dbStartedAt)}ms`);
         } catch (error) {
           console.error("Login authorize failed:", error);
@@ -166,22 +201,30 @@ export const authOptions: NextAuthOptions = {
         const googlePhoto = user.image || (profile as { picture?: string })?.picture || null;
 
         try {
-          let dbUser = await prisma.user.findUnique({
-            where: { email },
-            select: {
-              id: true,
-              email: true,
-              role: true,
-              status: true,
-              name: true,
-              displayName: true,
-              profileImageUrl: true,
-            },
-          });
+          const googleUserSelect = {
+            id: true,
+            email: true,
+            role: true,
+            status: true,
+            name: true,
+            displayName: true,
+            profileImageUrl: true,
+          } as const;
+          // Older accounts may be stored with mixed-case emails.
+          const dbUser =
+            (await prisma.user.findUnique({ where: { email }, select: googleUserSelect })) ??
+            (await prisma.user.findFirst({
+              where: { email: { equals: email, mode: "insensitive" } },
+              select: googleUserSelect,
+            }));
 
           if (dbUser) {
+            // Google sign-in must respect the same approval gate as email/password login.
             if (dbUser.status === "REJECTED") {
-              return false;
+              return "/login?error=REJECTED_USER";
+            }
+            if (dbUser.status === "PENDING") {
+              return "/login?error=PENDING_APPROVAL";
             }
             // Safely store Google profile picture if the AMK user has no custom avatar yet
             if (!dbUser.profileImageUrl && googlePhoto) {
@@ -192,30 +235,25 @@ export const authOptions: NextAuthOptions = {
               dbUser.profileImageUrl = googlePhoto;
             }
           } else {
-            // Automatically create a new AMK customer account for first-time Google sign-ins
+            // First-time Google sign-in: create a join request that waits for
+            // admin approval, exactly like the email registration form does.
             const rawName = user.name || (profile as { name?: string })?.name || email.split("@")[0] || "לקוח Google";
             const dummyHash = await bcrypt.hash(crypto.randomUUID(), 10);
 
-            dbUser = await prisma.user.create({
+            await prisma.user.create({
               data: {
                 email,
                 name: rawName,
                 displayName: rawName,
                 profileImageUrl: googlePhoto,
                 role: "CUSTOMER",
-                status: "ACTIVE",
+                status: "PENDING",
                 password: dummyHash,
+                shortMessage: "נרשם/ה באמצעות Google",
               },
-              select: {
-                id: true,
-                email: true,
-                role: true,
-                status: true,
-                name: true,
-                displayName: true,
-                profileImageUrl: true,
-              },
+              select: { id: true },
             });
+            return "/login?error=PENDING_APPROVAL_NEW";
           }
 
           // Propagate DB user properties and sanitized avatar to NextAuth user object for the JWT callback
@@ -228,7 +266,7 @@ export const authOptions: NextAuthOptions = {
           return true;
         } catch (err) {
           console.error("[auth] Google signIn callback error:", err);
-          return false;
+          return "/login?error=GOOGLE_SIGNIN_FAILED";
         }
       }
       return true;
@@ -241,6 +279,20 @@ export const authOptions: NextAuthOptions = {
         token.status = user.status;
         token.name = user.name;
         token.picture = sanitizeJwtAvatar((user as { profileImageUrl?: string | null }).profileImageUrl || user.image);
+        token.checkedAt = Date.now();
+      } else if (token.id && token.role && Date.now() - (token.checkedAt ?? 0) > AUTH_RECHECK_INTERVAL_MS) {
+        // A session lasts 30 days, so re-read role/status from the database
+        // regularly: a rejected, deleted or demoted user must not keep old access.
+        const current = await loadAuthState(token.id);
+        if (current === "MISSING" || (current && current.status !== "ACTIVE")) {
+          // Throwing here makes NextAuth treat the session as invalid and clear it.
+          throw new Error("SESSION_REVOKED");
+        }
+        if (current) {
+          token.role = current.role;
+          token.status = current.status;
+          token.checkedAt = Date.now();
+        }
       } else if (!token.id || !token.role) {
         try {
           const dbStartedAt = performance.now();
