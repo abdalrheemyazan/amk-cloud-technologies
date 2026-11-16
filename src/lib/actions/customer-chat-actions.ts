@@ -31,6 +31,7 @@ import {
 } from "@/lib/support-attachments";
 import { removeSupportAttachmentObjects } from "@/lib/support-attachment-storage";
 import { embedText } from "@/lib/ai/embeddings";
+import { isRateLimited } from "@/lib/rate-limit";
 import { matchKnowledgeChunks } from "@/lib/knowledge/vector-search";
 
 const CUSTOMER_KNOWLEDGE_AUDIENCE = "CUSTOMER_VISIBLE";
@@ -44,6 +45,12 @@ const AI_STATUS = "AI_CHAT";
 const AI_SENDER_ID = "gemini-amk-support";
 const MAX_MESSAGE_LENGTH = 3000;
 const COOLDOWN_MS = 1500;
+const AI_RATE_WINDOW_MS = 10 * 60 * 1000;
+const AI_MESSAGES_PER_WINDOW = 20;
+const AI_MESSAGES_PER_DAY = 150;
+const AI_RATE_LIMIT_ERROR = "נשלחו הודעות רבות בזמן קצר. יש להמתין מעט ולנסות שוב.";
+const AI_DAILY_LIMIT_ERROR =
+  "הגעת למגבלת ההודעות היומית לעוזר החכם. אפשר להעביר את הפנייה לנציג תמיכה או לנסות שוב מחר.";
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const GENERIC_AI_ERROR =
   "לא ניתן לקבל תשובה מהעוזר החכם כרגע. אפשר לנסות שוב או להעביר את הפנייה לנציג תמיכה.";
@@ -316,6 +323,36 @@ export async function getCustomerAiConversation(
   }
 }
 
+/**
+ * Returns a customer-facing error when this customer is sending AI chat messages
+ * too fast, otherwise null. The in-memory check also blocks parallel requests
+ * fired at the same moment; the database counts hold across server instances.
+ * (Customers can hard-delete AI-only chats, which removes those messages from
+ * the count; the in-memory window still covers that within one instance.)
+ */
+async function checkAiChatRateLimit(customerId: string): Promise<string | null> {
+  if (
+    isRateLimited(`ai-chat-burst:${customerId}`, 1, COOLDOWN_MS) ||
+    isRateLimited(`ai-chat:${customerId}`, AI_MESSAGES_PER_WINDOW, AI_RATE_WINDOW_MS)
+  ) {
+    return AI_RATE_LIMIT_ERROR;
+  }
+
+  const now = Date.now();
+  const ownAiMessages = { senderId: customerId, senderRole: "CUSTOMER" as const, session: { status: AI_STATUS } };
+  const [inWindow, inDay] = await Promise.all([
+    prisma.sessionMessage.count({
+      where: { ...ownAiMessages, createdAt: { gte: new Date(now - AI_RATE_WINDOW_MS) } },
+    }),
+    prisma.sessionMessage.count({
+      where: { ...ownAiMessages, createdAt: { gte: new Date(now - 24 * 60 * 60 * 1000) } },
+    }),
+  ]);
+  if (inWindow >= AI_MESSAGES_PER_WINDOW) return AI_RATE_LIMIT_ERROR;
+  if (inDay >= AI_MESSAGES_PER_DAY) return AI_DAILY_LIMIT_ERROR;
+  return null;
+}
+
 export async function sendCustomerChatMessage(
   input: SendCustomerChatInput,
 ): Promise<ActionResult<{ conversationId: string; userMessage: CustomerAiChatMessage; reply: CustomerAiChatMessage }>> {
@@ -334,6 +371,11 @@ export async function sendCustomerChatMessage(
     return { ok: false, error: "יש לכתוב הודעה או לצרף תמונה לפני השליחה." };
   }
   const persistedMessage = message || "צורפה תמונה לבדיקה.";
+
+  // Limit per customer across ALL their AI conversations. The per-conversation
+  // check further down could be skipped by simply starting a new conversation.
+  const rateLimitError = await checkAiChatRateLimit(customer.id);
+  if (rateLimitError) return { ok: false, error: rateLimitError };
 
   const startedAt = performance.now();
   let conversationId: string | undefined;

@@ -8,7 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { STAFF_ROLES } from "@/lib/roles";
 import { ROLE_LABELS } from "@/lib/support-labels";
 import { normalizeAgentStatus, type AgentStatus } from "@/lib/support-types";
-import { cleanupExpiredSupportSessions } from "@/lib/actions/support-chat-actions";
+import { cleanupExpiredSupportSessions } from "@/lib/support-session-cleanup";
 import type { ConnectedSupportAgent } from "@/lib/actions/support-team-actions";
 import {
   calculateRequestPriority,

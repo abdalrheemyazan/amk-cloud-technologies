@@ -28,5 +28,7 @@ declare module "next-auth/jwt" {
     image?: string | null;
     picture?: string | null;
     profileImageUrl?: string | null;
+    /** When role/status were last confirmed against the database (ms epoch). */
+    checkedAt?: number;
   }
 }
